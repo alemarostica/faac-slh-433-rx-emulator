@@ -1,6 +1,6 @@
 #include <furi_hal.h>
 
-#include "faac_rx_emu.h"
+#include "faac_slh_rx_emu.h"
 
 static SubGhzEnvironment* load_environment() {
     SubGhzEnvironment* environment = subghz_environment_alloc();
