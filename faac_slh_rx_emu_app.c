@@ -184,7 +184,8 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewSubmenu);
     submenu_free(app->submenu);
     view_free(app->view_receive);
-    view_free(app->view_about);
+    // NON METTERE QUESTA ROBA, LA VIEW OTTENUTA DA WIDGET GET VIEW NON É EFFETTIVAMENTE ALLOCATA IN MEMORIA
+    // view_free(app->view_about);
     widget_free(app->widget_about);
     view_dispatcher_free(app->view_dispatcher);
 
