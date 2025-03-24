@@ -2,7 +2,7 @@ App(
     appid="subghz_faac_emu",
     name="FAAC SLH rx emulator",
     apptype=FlipperAppType.EXTERNAL,
-    entry_point="faac_emu_main",
+    entry_point="faac_slh_rx_emu_main",
     requires=["gui", "subghz"],
     stack_size=2 * 1024,
     fap_icon="faac_slh_rx_emu_10px.png",

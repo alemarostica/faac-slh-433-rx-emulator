@@ -1,10 +1,13 @@
-#include "applications_user/faac_rx_emulator/faac_slh_rx_emu.h"
+#include "applications_user/faac_rx_emulator/faac_slh_rx_emu_subghz.h"
 #include "gui/modules/submenu.h"
 #include "gui/modules/widget.h"
 #include "gui/view_dispatcher.h"
 #include "notification/notification.h"
 
 // Sicuro un model per la parte del receiver mi servirà, lo metto giù in breve
+/**
+ * @brief   The model is used in the Receive view and stores information on the current readings, remotes and status
+*/
 typedef struct {
     uint32_t count;
     uint32_t future_count;
@@ -14,10 +17,16 @@ typedef struct {
     FuriString* status;
 } FaacSLHRxEmuModel;
 
+/**
+ * @brief   Reference to a FaacSLHRxEmuModel object
+*/
 typedef struct {
     FaacSLHRxEmuModel* model;
 } FaacSLHRxEmuRefModel;
 
+/**
+ * @brief   Struct of the main app
+*/
 typedef struct {
     NotificationApp* notifications;
 
@@ -30,5 +39,5 @@ typedef struct {
     Widget* widget_about;
 
     FaacSLHRxEmuModel* model;
-    FaacSLHRxEmu* emu;
+    FaacSLHRxEmu* subghz;
 } FaacSLHRxEmuApp;

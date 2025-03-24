@@ -24,6 +24,24 @@ typedef enum {
     FaacSLHRxEmuSubMenuIndexReceive,
 } FaacSLHRxEmuSubmenuIndex;
 
+static bool decode_packet(FuriString* buffer, void* ctx) {
+    FaacSLHRxEmuApp* context = (FaacSLHRxEmuApp*)ctx;
+    UNUSED(context);
+    furi_hal_vibro_on(true);
+    furi_delay_ms(50);
+    furi_hal_vibro_on(false);
+
+    if(furi_string_start_with_str(buffer, "FAAC")) {
+        // Mi piacerebbe avere una devboard
+        FURI_LOG_I(TAG, "FAAC SLH");
+    } else {
+        // Mi piacerebbe avere una devboard
+        FURI_LOG_I(TAG, "Unknown protocol");
+    }
+
+    return true;
+}
+
 /**
  * @brief       Callback which handles custom events
  * @details     This function is invoked every time an event occurs
@@ -34,6 +52,7 @@ typedef enum {
 bool faac_slh_rx_emu_view_dispatcher_custom_event_callback(void* context, uint32_t event) {
     UNUSED(context);
 
+    // Mi piacerebbe avere una devboard
     FURI_LOG_I(TAG, "Custom event received: %ld", event);
 
     return true;
@@ -47,6 +66,7 @@ void faac_slh_rx_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewAbout);
         break;
     case FaacSLHRxEmuSubMenuIndexReceive:
+        start_listening(app->subghz, decode_packet, app);
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewReceive);
         break;
     default:
@@ -61,15 +81,13 @@ uint32_t faac_slh_rx_emu_navigation_exit_callback(void* context) {
 
 uint32_t faac_slh_rx_emu_navigation_submenu_callback(void* context) {
     UNUSED(context);
-    // stop_listening
 
     return FaacSLHRxEmuViewSubmenu;
 }
 
 uint32_t faac_slh_rx_emu_navigation_submenu_stop_receiving_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
-    UNUSED(app);
-    // stop_listening(app->emu);
+    stop_listening(app->subghz);
 
     return FaacSLHRxEmuViewSubmenu;
 }
@@ -100,7 +118,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
 
     Gui* gui = furi_record_open(RECORD_GUI);
 
-    app->emu = faac_slh_rx_emu_alloc();
+    app->subghz = faac_slh_rx_emu_subghz_alloc();
 
     app->model = malloc(sizeof(FaacSLHRxEmuModel));
     app->model->count = 0x0;
@@ -159,14 +177,29 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
 }
 
 void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
+    furi_record_close(RECORD_NOTIFICATION);
+
+    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewAbout);
+    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewReceive);
+    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewSubmenu);
+    submenu_free(app->submenu);
+    view_free(app->view_receive);
+    view_free(app->view_about);
+    widget_free(app->widget_about);
+    view_dispatcher_free(app->view_dispatcher);
+
     furi_record_close(RECORD_GUI);
 
-    faac_slh_rx_emu_free(app->emu);
+    faac_slh_rx_emu_subghz_free(app->subghz);
+
+    furi_string_free(app->model->key);
+    furi_string_free(app->model->status);
+    free(app->model);
 
     free(app);
 }
 
-int32_t faac_emu_main(void* p) {
+int32_t faac_slh_rx_emu_main(void* p) {
     UNUSED(p);
 
     FaacSLHRxEmuApp* app = faac_slh_rx_emu_app_alloc();
