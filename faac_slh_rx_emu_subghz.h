@@ -12,7 +12,7 @@
 #ifdef TAG
 #undef TAG
 #endif
-#define TAG "FAACRxEmuSubGHzApp"
+#define TAG "FAACRxEmuSubGHz"
 
 typedef bool (*SubghzPacketCallback)(FuriString* buffer, void* context);
 

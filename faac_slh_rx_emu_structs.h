@@ -1,3 +1,5 @@
+#pragma once
+
 #include "applications_user/faac_rx_emulator/faac_slh_rx_emu_subghz.h"
 #include "gui/modules/submenu.h"
 #include "gui/modules/widget.h"
@@ -9,12 +11,16 @@
  * @brief   The model is used in the Receive view and stores information on the current readings, remotes and status
 */
 typedef struct {
+    uint32_t code_fix;
+    uint32_t hop;
+    uint32_t serial;
     uint32_t count;
     uint32_t future_count;
     bool opened;
 
     FuriString* key;
     FuriString* status;
+    FuriString* full_output;
 } FaacSLHRxEmuModel;
 
 /**
@@ -34,9 +40,9 @@ typedef struct {
     Submenu* submenu;
 
     View* view_receive;
-    View* view_about;
 
     Widget* widget_about;
+    Widget* widget_last_transmission;
 
     FaacSLHRxEmuModel* model;
     FaacSLHRxEmu* subghz;
