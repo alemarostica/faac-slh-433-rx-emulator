@@ -1,13 +1,8 @@
 #include "faac_slh_rx_emu_utils.h"
 #include <gui/gui.h>
 
-// Sembra un po' carlona come soluzione, oh well
-void __gui_redraw() {
-    // Redraw screen
-    Gui* gui = furi_record_open(RECORD_GUI);
-    gui_direct_draw_acquire(gui);
-    gui_direct_draw_release(gui);
-}
+// This is copied from Derek Jamison's Rolling flaws application
+// Check https://github.com/jamisonderek/flipper-zero-tutorials/tree/main/subghz/apps/rolling-flaws
 
 size_t __furi_string_extract_string(
     FuriString* buffer,
@@ -39,14 +34,14 @@ size_t __furi_string_extract_string_until(
     FuriString* buffer,
     size_t start_index,
     char* text,
-    char until_delim,
+    char delim,
     FuriString* result) {
     size_t len = strlen(text);
     size_t valid_index = furi_string_size(buffer) - 1;
     size_t field = furi_string_search_str(buffer, text, start_index) + len;
     size_t term = -1;
     if(field < valid_index) {
-        term = furi_string_search_char(buffer, until_delim, field);
+        term = furi_string_search_char(buffer, delim, field);
         if(term < valid_index) {
             furi_string_reset(result);
             furi_string_set_n(result, buffer, field, term - field);
@@ -78,11 +73,17 @@ uint32_t
         if(term < valid_index) {
             FuriString* result = furi_string_alloc();
             furi_string_set_n(result, buffer, field, term - field);
-            value = __furi_string_hex_to_uint32_t(result);
+            value = __furi_string_hex_to_uint32(result);
             FURI_LOG_D(TAG, "%s data is >>%s<<", text, furi_string_get_cstr(result));
             furi_string_free(result);
         } else {
-            FURI_LOG_E(TAG, "Failed to find terminator for >>%s<<", text);
+            term = furi_string_size(buffer);
+            FuriString* result = furi_string_alloc();
+            furi_string_set_n(result, buffer, field, term - field);
+            value = __furi_string_hex_to_uint32(result);
+            FURI_LOG_E(TAG, "Failed to find terminator for >>%s<<, using end of string", text);
+            FURI_LOG_I(TAG, "%s data is >>%s<<", text, furi_string_get_cstr(result));
+            furi_string_free(result);
         }
     } else {
         FURI_LOG_E(TAG, "Failed to find >>%s<<", text);
@@ -91,7 +92,7 @@ uint32_t
     return value;
 }
 
-uint32_t __furi_string_hex_to_uint32_t(FuriString* str) {
+uint32_t __furi_string_hex_to_uint32(FuriString* str) {
     uint32_t result = 0;
     for(size_t i = 0; i < furi_string_size(str); i++) {
         char ch = furi_string_get_char(str, i);
@@ -108,4 +109,11 @@ uint32_t __furi_string_hex_to_uint32_t(FuriString* str) {
     }
 
     return result;
+}
+
+void __gui_redraw() {
+    // Redraw screen
+    Gui* gui = furi_record_open(RECORD_GUI);
+    gui_direct_draw_acquire(gui);
+    gui_direct_draw_release(gui);
 }

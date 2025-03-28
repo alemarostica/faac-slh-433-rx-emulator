@@ -5,9 +5,7 @@
 #ifdef TAG
 #undef TAG
 #endif
-#define TAG "FaacSLHRxEmuUtils"
-
-void __gui_redraw();
+#define TAG "FaacSLHRxUtils"
 
 size_t __furi_string_extract_string(
     FuriString* buffer,
@@ -26,4 +24,6 @@ size_t __furi_string_extract_string_until(
 uint32_t
     __furi_string_extract_int(FuriString* buffer, char* text, char delim, uint32_t default_value);
 
-uint32_t __furi_string_hex_to_uint32_t(FuriString* str);
+uint32_t __furi_string_hex_to_uint32(FuriString* str);
+
+void __gui_redraw();

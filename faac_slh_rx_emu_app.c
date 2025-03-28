@@ -1,3 +1,4 @@
+#include "faac_slh_rx_emu_utils.h"
 #include <furi.h>
 
 #include "faac_slh_rx_emu_structs.h"
@@ -17,11 +18,6 @@ typedef enum {
 } FaacSLHRxEmuView;
 
 typedef enum {
-    FaacSLHRxEmuEventIdReceivedNormalSignal,
-    FaacSLHRxEmuEventIdReceivedProgSignal,
-} FaacSLHRxEmuEventId;
-
-typedef enum {
     FaacSLHRxEmuSubmenuIndexAbout,
     FaacSLHRxEmuSubMenuIndexReceive,
     FaacSLHRxEmuSubMenuIndexLastTransmission,
@@ -34,6 +30,7 @@ static bool decode_packet(FuriString* buffer, void* ctx) {
     // Ha smesso 	(ㆆ _ ㆆ)
     // HA RICOMINCIATO ?!?!?!?!?!
     // NON CAPISCO
+    // Penso sia legato al fatto che il firmware fa vibrare alla ricezione di un segnale FAAC SLH quindi questa che imposto è una seconda vibrazione
     furi_hal_vibro_on(true);
     furi_delay_ms(50);
     furi_hal_vibro_on(false);
@@ -41,15 +38,23 @@ static bool decode_packet(FuriString* buffer, void* ctx) {
     if(furi_string_start_with_str(buffer, "Faac SLH 64bit")) {
         // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "FAAC SLH");
-        decode_faac_slh(context->model, buffer);
+        decode_faac_slh(context, context->model, buffer);
         // funzione che checka se si apre o no?
     } else {
         // Mi piacerebbe avere una devboard
-        FURI_LOG_I(TAG, "Unknown protocol");
+        FURI_LOG_I(TAG, "Not FAAC SLH");
     }
 
     return true;
 }
+
+// I had trouble drawing and icon to the screen so I hardcoded it with a bitmap
+// To be honest I have no idea how this works
+// I just found a site which gives the code given a drawing you make
+static const uint8_t image_ButtonCenter_0_bits[] = {0x1c, 0x22, 0x5d, 0x5d, 0x5d, 0x22, 0x1c};
+
+// DON'T EVER TRY TO PUT ANYTHING IN THIS CALLBACK THAT IS NOT STRICTLY NECESSARY TO THE CALLBACK
+// THEY HAVE THE POWER TO MESS STUFF UP SERIOUSLY
 
 /**
  * @brief       Callback which handles custom events
@@ -87,21 +92,60 @@ uint32_t faac_slh_rx_emu_navigation_submenu_stop_receiving_callback(void* contex
 
 void faac_slh_rx_emu_receive_draw_callback(Canvas* canvas, void* model) {
     FaacSLHRxEmuModel* my_model = ((FaacSLHRxEmuRefModel*)model)->model;
+    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)my_model->app;
 
     FuriString* str = furi_string_alloc();
     canvas_set_bitmap_mode(canvas, 1);
     canvas_set_font(canvas, FontSecondary);
     furi_string_printf(str, "Key: %s", furi_string_get_cstr(my_model->key));
-    canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
-    furi_string_printf(str, "Count:    %08lX", (uint32_t)my_model->count);
-    canvas_draw_str(canvas, 0, 18, furi_string_get_cstr(str));
+    canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
+
+    // No idea di come si metta l'iconcina del button
+    if(app->mode != FaacSLHRxEMuNormal) {
+        canvas_set_font(canvas, FontPrimary);
+        furi_string_printf(str, "Listening Prog Mode");
+        canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
+        canvas_set_font(canvas, FontSecondary);
+        furi_string_printf(str, "Seed: %08lX  mCnt: %02lX", my_model->seed, my_model->count);
+        canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
+        canvas_draw_xbm(canvas, 119, 55, 7, 7, image_ButtonCenter_0_bits);
+        canvas_draw_str(canvas, 88, 62, "Normal");
+    } else {
+        canvas_set_font(canvas, FontPrimary);
+        furi_string_printf(str, "Listening Normal Mode");
+        canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
+        canvas_set_font(canvas, FontSecondary);
+        furi_string_printf(
+            str, "Serial: %07lX  Btn: %01lX", my_model->code_fix >> 4, my_model->code_fix & 0xF);
+        canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
+        if(my_model->count == FAILED_TO_PARSE) {
+            furi_string_printf(str, "Count: Unknown");
+        } else {
+            furi_string_printf(str, "Count: %05lX", (uint32_t)my_model->count);
+        }
+        canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
+        canvas_draw_xbm(canvas, 119, 55, 7, 7, image_ButtonCenter_0_bits);
+        canvas_draw_str(canvas, 98, 62, "Prog");
+    }
 
     furi_string_free(str);
 }
 
 bool faac_slh_rx_emu_input_callback(InputEvent* event, void* context) {
-    UNUSED(event);
-    UNUSED(context);
+    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
+
+    FURI_LOG_I(TAG, "Input event received: %d", event->type);
+    if(event->type == InputTypeShort) {
+        FURI_LOG_I(TAG, "Input key: %d", event->key);
+        if(event->key == InputKeyOk) {
+            if(app->mode == FaacSLHRxEMuNormal) {
+                app->mode = FaacSLHRxEmuWaitingProgSignal;
+            } else {
+                app->mode = FaacSLHRxEMuNormal;
+            }
+            __gui_redraw();
+        }
+    }
 
     return false;
 }
@@ -154,14 +198,16 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
 
     app->model = malloc(sizeof(FaacSLHRxEmuModel));
     app->model->count = 0x0;
-    app->model->future_count = 0xFFFFFFFF;
     app->model->key = furi_string_alloc();
     furi_string_printf(app->model->key, "None received");
     app->model->opened = false;
-    app->model->status = furi_string_alloc();
-    furi_string_printf(app->model->status, "No key received");
+    app->model->seed = 0x0;
+    app->mode = FaacSLHRxEMuNormal;
     app->model->full_output = furi_string_alloc();
+    app->model->app = app;
     furi_string_printf(app->model->full_output, "No transmission received yet");
+
+    app->last_transmission = faac_slh_data_alloc();
 
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
@@ -203,7 +249,9 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     view_set_previous_callback(
         app->view_receive, faac_slh_rx_emu_navigation_submenu_stop_receiving_callback);
     view_allocate_model(
-        app->view_receive, ViewModelTypeLockFree /* what is */, sizeof(FaacSLHRxEmuRefModel));
+        app->view_receive,
+        ViewModelTypeLockFree /* what is, credo qualcosa legato alla concurrency */,
+        sizeof(FaacSLHRxEmuRefModel));
     FaacSLHRxEmuRefModel* refmodel = view_get_model(app->view_receive);
     refmodel->model = app->model; // Che strano modo di assegnare un model
     view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewReceive, app->view_receive);
@@ -240,8 +288,9 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     faac_slh_rx_emu_subghz_free(app->subghz);
 
     furi_string_free(app->model->key);
-    furi_string_free(app->model->status);
     free(app->model);
+
+    faac_slh_data_free(app->last_transmission);
 
     free(app);
 }

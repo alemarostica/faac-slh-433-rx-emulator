@@ -23,6 +23,9 @@ FaacSLHRxEmu* faac_slh_rx_emu_subghz_alloc() {
 void faac_slh_rx_emu_subghz_free(FaacSLHRxEmu* context) {
     subghz_environment_free(context->environment);
     furi_stream_buffer_free(context->stream);
+    if(context->receiver != NULL) {
+        subghz_receiver_free(context->receiver);
+    }
     free(context);
 }
 
@@ -32,7 +35,8 @@ static void
     FuriString* buffer = furi_string_alloc();
     subghz_protocol_decoder_base_get_string(decoder_base, buffer);
     subghz_receiver_reset(receiver);
-    // Mi piacerebbe avere una devboard_I(TAG, "PACKET:\r\n%s", furi_string_get_cstr(buffer));
+    // Mi piacerebbe avere una devboard
+    FURI_LOG_I(TAG, "PACKET:\r\n%s", furi_string_get_cstr(buffer));
     if(context->callback) {
         if(!context->callback(buffer, context->callback_context)) {
             context->status = SUBGHZ_RECEIVER_SYNCHRONIZED;
@@ -84,7 +88,7 @@ static int32_t listen_rx(void* ctx) {
 
 void start_listening(FaacSLHRxEmu* context, SubghzPacketCallback callback, void* callback_context) {
     context->status = SUBGHZ_RECEIVER_INITIALIZING;
-    uint32_t frequency = 433950000;
+    uint32_t frequency = 433920000;
 
     context->callback = callback;
     context->callback_context = callback_context;
@@ -97,9 +101,11 @@ void start_listening(FaacSLHRxEmu* context, SubghzPacketCallback callback, void*
         return;
     }
 
-    context->receiver = subghz_receiver_alloc_init(context->environment);
-    subghz_receiver_set_filter(context->receiver, SubGhzProtocolFlag_Decodable);
-    subghz_receiver_set_rx_callback(context->receiver, rx_callback, context);
+    if(context->receiver == NULL) {
+        context->receiver = subghz_receiver_alloc_init(context->environment);
+        subghz_receiver_set_filter(context->receiver, SubGhzProtocolFlag_Decodable);
+        subghz_receiver_set_rx_callback(context->receiver, rx_callback, context);
+    }
 
     subghz_devices_begin(device);
     subghz_devices_reset(device);
@@ -132,7 +138,7 @@ void stop_listening(FaacSLHRxEmu* context) {
     const SubGhzDevice* device = subghz_devices_get_by_name(SUBGHZ_DEVICE_CC1101_INT_NAME);
     subghz_devices_stop_async_rx(device);
 
-    subghz_receiver_free(context->receiver);
+    // subghz_receiver_free(context->receiver);
     subghz_devices_deinit();
     context->status = SUBGHZ_RECEIVER_UNINITIALIZED;
 }
