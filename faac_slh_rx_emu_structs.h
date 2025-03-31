@@ -19,6 +19,7 @@ typedef struct {
 
     FuriString* key;
     FuriString* full_output;
+    FuriString* info;
 
     // This is needed to have a reference to the app context inside the draw callback for the receive view
     // I don't know if there is a better way to do it

@@ -108,6 +108,8 @@ void faac_slh_rx_emu_receive_draw_callback(Canvas* canvas, void* model) {
         canvas_set_font(canvas, FontSecondary);
         furi_string_printf(str, "Seed: %08lX  mCnt: %02lX", my_model->seed, my_model->count);
         canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
+        furi_string_printf(str, "Info: %s", furi_string_get_cstr(my_model->info));
+        canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
         canvas_draw_xbm(canvas, 119, 55, 7, 7, image_ButtonCenter_0_bits);
         canvas_draw_str(canvas, 88, 62, "Normal");
     } else {
@@ -124,6 +126,8 @@ void faac_slh_rx_emu_receive_draw_callback(Canvas* canvas, void* model) {
             furi_string_printf(str, "Count: %05lX", (uint32_t)my_model->count);
         }
         canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
+        furi_string_printf(str, "Info: %s", furi_string_get_cstr(my_model->info));
+        canvas_draw_str(canvas, 0, 52, furi_string_get_cstr(str));
         canvas_draw_xbm(canvas, 119, 55, 7, 7, image_ButtonCenter_0_bits);
         canvas_draw_str(canvas, 98, 62, "Prog");
     }
@@ -139,8 +143,21 @@ bool faac_slh_rx_emu_input_callback(InputEvent* event, void* context) {
         FURI_LOG_I(TAG, "Input key: %d", event->key);
         if(event->key == InputKeyOk) {
             if(app->mode == FaacSLHRxEMuNormal) {
+                app->model->code_fix = 0x0;
+                app->model->count = 0x0;
+                app->model->hop = 0x0;
+                app->model->opened = false;
+                app->model->seed = 0x0;
+                furi_string_printf(app->model->key, "None received");
+                furi_string_printf(app->model->info, "OK");
                 app->mode = FaacSLHRxEmuWaitingProgSignal;
             } else {
+                app->model->code_fix = 0x0;
+                app->model->count = 0x0;
+                app->model->hop = 0x0;
+                app->model->opened = false;
+                furi_string_printf(app->model->key, "None received");
+                furi_string_printf(app->model->info, "OK");
                 app->mode = FaacSLHRxEMuNormal;
             }
             __gui_redraw();
@@ -206,6 +223,8 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model->full_output = furi_string_alloc();
     app->model->app = app;
     furi_string_printf(app->model->full_output, "No transmission received yet");
+    app->model->info = furi_string_alloc();
+    furi_string_printf(app->model->info, "OK");
 
     app->last_transmission = faac_slh_data_alloc();
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "faac_slh_rx_emu_structs.h"
 #include <furi.h>
 
 #ifdef TAG

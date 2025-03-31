@@ -37,6 +37,13 @@ void decode_faac_slh(void* context, FaacSLHRxEmuModel* model, FuriString* buffer
     FaacSLHData* data = faac_slh_data_alloc();
 
     if(app->mode == FaacSLHRxEmuWaitingProgSignal) {
+        if(furi_string_search_str(buffer, "Master") == FURI_STRING_FAILURE) {
+            furi_string_printf(model->info, "Normal key, ignoring");
+            __gui_redraw();
+            return;
+        }
+        // Maybe have different variables for the programming screen and the normal screen in the model?
+        // So that when you switch between the screen no jumbled mess appears?
         // Clear previous transmission
         data->fix = 0x0;
         data->hop = 0x0;
@@ -55,8 +62,15 @@ void decode_faac_slh(void* context, FaacSLHRxEmuModel* model, FuriString* buffer
         data->cnt =
             __furi_string_extract_int(buffer, "mCnt:", '\0' /* placeholder */, FAILED_TO_PARSE);
         model->count = data->cnt;
-        model->seed = data->seed;
+        if(data->seed != FAILED_TO_PARSE) {
+            model->seed = data->seed;
+        }
     } else {
+        if(furi_string_search_str(buffer, "Master") != FURI_STRING_FAILURE) {
+            furi_string_printf(model->info, "Prog key, ignoring");
+            __gui_redraw();
+            return;
+        }
         __furi_string_extract_string(buffer, 0, "Key:", '\r', model->key);
         // (゜-゜)
         // Se invio un segnale normale restituisce BADCODE
