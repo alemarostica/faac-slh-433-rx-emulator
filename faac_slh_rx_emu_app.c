@@ -1,9 +1,8 @@
-#include "faac_slh_rx_emu_utils.h"
 #include <furi.h>
 
 #include "faac_slh_rx_emu_structs.h"
 #include "faac_slh_rx_emu_about.h"
-#include "faac_slh_rx_emu_decoder.h"
+#include "faac_slh_rx_emu_parser.h"
 
 #ifdef TAG
 #undef TAG
@@ -11,7 +10,8 @@
 #define TAG "FAACRxEmuSubGHzApp"
 
 typedef enum {
-    FaacSLHRxEmuViewReceive,
+    FaacSLHRxEmuViewNormal,
+    FaacSLHRxEmuViewProg,
     FaacSLHRxEmuViewAbout,
     FaacSLHRxEmuViewSubmenu,
     FaacSLHRxEmuViewLastTransmission,
@@ -19,17 +19,14 @@ typedef enum {
 
 typedef enum {
     FaacSLHRxEmuSubmenuIndexAbout,
-    FaacSLHRxEmuSubMenuIndexReceive,
-    FaacSLHRxEmuSubMenuIndexLastTransmission,
+    FaacSLHRxEmuSubmenuIndexNormal,
+    FaacSLHRxEmuSubmenuIndexProg,
+    FaacSLHRxEmuSubmenuIndexLastTransmission,
 } FaacSLHRxEmuSubmenuIndex;
 
-static bool decode_packet(FuriString* buffer, void* ctx) {
-    FaacSLHRxEmuApp* context = (FaacSLHRxEmuApp*)ctx;
-    UNUSED(context);
+static bool parse_packet(FuriString* buffer, void* context) {
+    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     // PERHCÉ VIBRA DUE VOLTE?
-    // Ha smesso 	(ㆆ _ ㆆ)
-    // HA RICOMINCIATO ?!?!?!?!?!
-    // NON CAPISCO
     // Penso sia legato al fatto che il firmware fa vibrare alla ricezione di un segnale FAAC SLH quindi questa che imposto è una seconda vibrazione
     furi_hal_vibro_on(true);
     furi_delay_ms(50);
@@ -38,8 +35,11 @@ static bool decode_packet(FuriString* buffer, void* ctx) {
     if(furi_string_start_with_str(buffer, "Faac SLH 64bit")) {
         // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "FAAC SLH");
-        decode_faac_slh(context, context->model, buffer);
-        // funzione che checka se si apre o no?
+        if(furi_string_search_str(buffer, "Master") != FURI_STRING_FAILURE) {
+            parse_faac_slh_prog(app, buffer);
+        } else {
+            parse_faac_slh_normal(app, buffer);
+        }
     } else {
         // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "Not FAAC SLH");
@@ -47,11 +47,6 @@ static bool decode_packet(FuriString* buffer, void* ctx) {
 
     return true;
 }
-
-// I had trouble drawing and icon to the screen so I hardcoded it with a bitmap
-// To be honest I have no idea how this works
-// I just found a site which gives the code given a drawing you make
-static const uint8_t image_ButtonCenter_0_bits[] = {0x1c, 0x22, 0x5d, 0x5d, 0x5d, 0x22, 0x1c};
 
 // DON'T EVER TRY TO PUT ANYTHING IN THIS CALLBACK THAT IS NOT STRICTLY NECESSARY TO THE CALLBACK
 // THEY HAVE THE POWER TO MESS STUFF UP SERIOUSLY
@@ -83,86 +78,68 @@ uint32_t faac_slh_rx_emu_navigation_submenu_callback(void* context) {
     return FaacSLHRxEmuViewSubmenu;
 }
 
-uint32_t faac_slh_rx_emu_navigation_submenu_stop_receiving_callback(void* context) {
+uint32_t faac_slh_rx_emu_navigation_submenu_normal_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     stop_listening(app->subghz);
 
     return FaacSLHRxEmuViewSubmenu;
 }
 
-void faac_slh_rx_emu_receive_draw_callback(Canvas* canvas, void* model) {
-    FaacSLHRxEmuModel* my_model = ((FaacSLHRxEmuRefModel*)model)->model;
-    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)my_model->app;
+uint32_t faac_slh_rx_emu_submenu_prog_callback(void* context) {
+    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
+    stop_listening(app->subghz);
 
+    return FaacSLHRxEmuViewSubmenu;
+}
+
+void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
+    FaacSLHRxEmuModelNormal* model = ((FaacSLHRxEmuRefModelNormal*)my_model)->model;
     FuriString* str = furi_string_alloc();
-    canvas_set_bitmap_mode(canvas, 1);
-    canvas_set_font(canvas, FontSecondary);
-    furi_string_printf(str, "Key: %s", furi_string_get_cstr(my_model->key));
-    canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
 
-    // No idea di come si metta l'iconcina del button
-    if(app->mode != FaacSLHRxEMuNormal) {
-        canvas_set_font(canvas, FontPrimary);
-        furi_string_printf(str, "Listening Prog Mode");
-        canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
-        canvas_set_font(canvas, FontSecondary);
-        furi_string_printf(str, "Seed: %08lX  mCnt: %02lX", my_model->seed, my_model->count);
-        canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-        furi_string_printf(str, "Info: %s", furi_string_get_cstr(my_model->info));
-        canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
-        canvas_draw_xbm(canvas, 119, 55, 7, 7, image_ButtonCenter_0_bits);
-        canvas_draw_str(canvas, 88, 62, "Normal");
+    canvas_set_bitmap_mode(canvas, 1);
+    canvas_set_font(canvas, FontPrimary);
+    furi_string_printf(str, "Normal mode");
+    canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
+    canvas_set_font(canvas, FontSecondary);
+    furi_string_printf(str, "Key: %s", furi_string_get_cstr(model->key));
+    canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
+    furi_string_printf(
+        str, "Serial: %07lX  Btn: %01lX", model->code_fix >> 4, model->code_fix & 0xF);
+    canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
+    if(model->count == FAILED_TO_PARSE) {
+        furi_string_printf(str, "Count: Unknown");
     } else {
-        canvas_set_font(canvas, FontPrimary);
-        furi_string_printf(str, "Listening Normal Mode");
-        canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
-        canvas_set_font(canvas, FontSecondary);
-        furi_string_printf(
-            str, "Serial: %07lX  Btn: %01lX", my_model->code_fix >> 4, my_model->code_fix & 0xF);
-        canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-        if(my_model->count == FAILED_TO_PARSE) {
-            furi_string_printf(str, "Count: Unknown");
-        } else {
-            furi_string_printf(str, "Count: %05lX", (uint32_t)my_model->count);
-        }
-        canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
-        furi_string_printf(str, "Info: %s", furi_string_get_cstr(my_model->info));
-        canvas_draw_str(canvas, 0, 52, furi_string_get_cstr(str));
-        canvas_draw_xbm(canvas, 119, 55, 7, 7, image_ButtonCenter_0_bits);
-        canvas_draw_str(canvas, 98, 62, "Prog");
+        furi_string_printf(str, "Count: %05lX", model->count);
     }
+    canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
+    furi_string_printf(str, "Info: %s", furi_string_get_cstr(model->info));
+    canvas_draw_str(canvas, 0, 52, furi_string_get_cstr(str));
+
+    furi_string_free(str);
+}
+
+void faac_slh_rx_emu_prog_draw_callback(Canvas* canvas, void* my_model) {
+    FaacSLHRxEmuModelProg* model = ((FaacSLHRxEmuRefModelProg*)my_model)->model;
+    FuriString* str = furi_string_alloc();
+
+    canvas_set_bitmap_mode(canvas, 1);
+    canvas_set_font(canvas, FontPrimary);
+    furi_string_printf(str, "Programming mode");
+    canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
+    canvas_set_font(canvas, FontSecondary);
+    furi_string_printf(str, "Key: %s", furi_string_get_cstr(model->key));
+    canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
+    furi_string_printf(str, "Seed: %08lX  mCnt: %02X", model->seed, model->mCnt);
+    canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
+    furi_string_printf(str, "Info: %s", furi_string_get_cstr(model->info));
+    canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
 
     furi_string_free(str);
 }
 
 bool faac_slh_rx_emu_input_callback(InputEvent* event, void* context) {
-    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
-
-    FURI_LOG_I(TAG, "Input event received: %d", event->type);
-    if(event->type == InputTypeShort) {
-        FURI_LOG_I(TAG, "Input key: %d", event->key);
-        if(event->key == InputKeyOk) {
-            if(app->mode == FaacSLHRxEMuNormal) {
-                app->model->code_fix = 0x0;
-                app->model->count = 0x0;
-                app->model->hop = 0x0;
-                app->model->opened = false;
-                app->model->seed = 0x0;
-                furi_string_printf(app->model->key, "None received");
-                furi_string_printf(app->model->info, "OK");
-                app->mode = FaacSLHRxEmuWaitingProgSignal;
-            } else {
-                app->model->code_fix = 0x0;
-                app->model->count = 0x0;
-                app->model->hop = 0x0;
-                app->model->opened = false;
-                furi_string_printf(app->model->key, "None received");
-                furi_string_printf(app->model->info, "OK");
-                app->mode = FaacSLHRxEMuNormal;
-            }
-            __gui_redraw();
-        }
-    }
+    UNUSED(event);
+    UNUSED(context);
 
     return false;
 }
@@ -174,11 +151,15 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
     case FaacSLHRxEmuSubmenuIndexAbout:
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewAbout);
         break;
-    case FaacSLHRxEmuSubMenuIndexReceive:
-        start_listening(app->subghz, decode_packet, app);
-        view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewReceive);
+    case FaacSLHRxEmuSubmenuIndexNormal:
+        start_listening(app->subghz, parse_packet, app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewNormal);
         break;
-    case FaacSLHRxEmuSubMenuIndexLastTransmission:
+    case FaacSLHRxEmuSubmenuIndexProg:
+        start_listening(app->subghz, parse_packet, app);
+        view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewProg);
+        break;
+    case FaacSLHRxEmuSubmenuIndexLastTransmission:
         if(app->widget_last_transmission) {
             view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewLastTransmission);
             widget_free(app->widget_last_transmission);
@@ -191,7 +172,7 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
             AlignLeft,
             AlignTop,
             FontSecondary,
-            furi_string_get_cstr(app->model->full_output));
+            furi_string_get_cstr(app->last_transmission));
         view_set_previous_callback(
             widget_get_view(app->widget_last_transmission),
             faac_slh_rx_emu_navigation_submenu_callback);
@@ -213,20 +194,25 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
 
     app->subghz = faac_slh_rx_emu_subghz_alloc();
 
-    app->model = malloc(sizeof(FaacSLHRxEmuModel));
-    app->model->count = 0x0;
-    app->model->key = furi_string_alloc();
-    furi_string_printf(app->model->key, "None received");
-    app->model->opened = false;
-    app->model->seed = 0x0;
-    app->mode = FaacSLHRxEMuNormal;
-    app->model->full_output = furi_string_alloc();
-    app->model->app = app;
-    furi_string_printf(app->model->full_output, "No transmission received yet");
-    app->model->info = furi_string_alloc();
-    furi_string_printf(app->model->info, "OK");
+    app->last_transmission = furi_string_alloc();
 
-    app->last_transmission = faac_slh_data_alloc();
+    app->model_normal = malloc(sizeof(FaacSLHRxEmuModelNormal));
+    app->model_normal->code_fix = 0x0;
+    app->model_normal->hop = 0x0;
+    app->model_normal->seed = 0x0;
+    app->model_normal->count = 0x0;
+    app->model_normal->key = furi_string_alloc();
+    app->model_normal->info = furi_string_alloc();
+    furi_string_printf(app->model_normal->key, "None received");
+    furi_string_printf(app->model_normal->info, "OK");
+
+    app->model_prog = malloc(sizeof(FaacSLHRxEmuModelProg));
+    app->model_prog->seed = 0x0;
+    app->model_prog->mCnt = 0x0;
+    app->model_prog->key = furi_string_alloc();
+    app->model_prog->info = furi_string_alloc();
+    furi_string_printf(app->model_prog->key, "None received");
+    furi_string_printf(app->model_prog->info, "OK");
 
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
@@ -244,13 +230,19 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     submenu_add_item(
         app->submenu,
         "Receive",
-        FaacSLHRxEmuSubMenuIndexReceive,
+        FaacSLHRxEmuSubmenuIndexNormal,
+        faac_slh_rx_emu_submenu_callback,
+        app);
+    submenu_add_item(
+        app->submenu,
+        "Program new remote",
+        FaacSLHRxEmuSubmenuIndexProg,
         faac_slh_rx_emu_submenu_callback,
         app);
     submenu_add_item(
         app->submenu,
         "Last Transmission",
-        FaacSLHRxEmuSubMenuIndexLastTransmission,
+        FaacSLHRxEmuSubmenuIndexLastTransmission,
         faac_slh_rx_emu_submenu_callback,
         app);
 
@@ -261,19 +253,29 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
         app->view_dispatcher, FaacSLHRxEmuViewSubmenu, submenu_get_view(app->submenu));
     view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewSubmenu);
 
-    app->view_receive = view_alloc();
-    view_set_context(app->view_receive, app);
-    view_set_draw_callback(app->view_receive, faac_slh_rx_emu_receive_draw_callback);
-    view_set_input_callback(app->view_receive, faac_slh_rx_emu_input_callback);
+    app->view_normal = view_alloc();
+    view_set_context(app->view_normal, app);
+    view_set_draw_callback(app->view_normal, faac_slh_rx_emu_normal_draw_callback);
+    view_set_input_callback(app->view_normal, faac_slh_rx_emu_input_callback);
     view_set_previous_callback(
-        app->view_receive, faac_slh_rx_emu_navigation_submenu_stop_receiving_callback);
+        app->view_normal, faac_slh_rx_emu_navigation_submenu_normal_callback);
     view_allocate_model(
-        app->view_receive,
+        app->view_normal,
         ViewModelTypeLockFree /* what is, credo qualcosa legato alla concurrency */,
-        sizeof(FaacSLHRxEmuRefModel));
-    FaacSLHRxEmuRefModel* refmodel = view_get_model(app->view_receive);
-    refmodel->model = app->model; // Che strano modo di assegnare un model
-    view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewReceive, app->view_receive);
+        sizeof(FaacSLHRxEmuRefModelNormal));
+    FaacSLHRxEmuRefModelNormal* normal_model = view_get_model(app->view_normal);
+    normal_model->model = app->model_normal; // Che strano modo di assegnare un model
+    view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewNormal, app->view_normal);
+
+    app->view_prog = view_alloc();
+    view_set_context(app->view_prog, app);
+    view_set_draw_callback(app->view_prog, faac_slh_rx_emu_prog_draw_callback);
+    view_set_input_callback(app->view_prog, faac_slh_rx_emu_input_callback);
+    view_set_previous_callback(app->view_prog, faac_slh_rx_emu_submenu_prog_callback);
+    view_allocate_model(app->view_prog, ViewModelTypeLockFree, sizeof(FaacSLHRxEmuModelProg));
+    FaacSLHRxEmuRefModelProg* prog_model = view_get_model(app->view_prog);
+    prog_model->model = app->model_prog;
+    view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewProg, app->view_prog);
 
     app->widget_about = widget_alloc();
     widget_add_text_scroll_element(app->widget_about, 0, 0, 128, 64, FAAC_SLH_RX_EMU_ABOUT_TEXT);
@@ -291,14 +293,16 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     furi_record_close(RECORD_NOTIFICATION);
 
     view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewAbout);
-    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewReceive);
+    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewNormal);
+    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewProg);
     view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewSubmenu);
     if(app->widget_last_transmission) {
         view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewLastTransmission);
         widget_free(app->widget_last_transmission);
     }
     submenu_free(app->submenu);
-    view_free(app->view_receive);
+    view_free(app->view_normal);
+    view_free(app->view_prog);
     widget_free(app->widget_about);
     view_dispatcher_free(app->view_dispatcher);
 
@@ -306,10 +310,14 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
 
     faac_slh_rx_emu_subghz_free(app->subghz);
 
-    furi_string_free(app->model->key);
-    free(app->model);
+    furi_string_free(app->last_transmission);
+    furi_string_free(app->model_normal->key);
+    furi_string_free(app->model_normal->info);
+    furi_string_free(app->model_prog->key);
+    furi_string_free(app->model_prog->info);
 
-    faac_slh_data_free(app->last_transmission);
+    free(app->model_prog);
+    free(app->model_normal);
 
     free(app);
 }

@@ -15,39 +15,30 @@ typedef struct {
     uint32_t hop;
     uint32_t count;
     uint32_t seed;
-    bool opened;
 
     FuriString* key;
-    FuriString* full_output;
     FuriString* info;
-
-    // This is needed to have a reference to the app context inside the draw callback for the receive view
-    // I don't know if there is a better way to do it
-    void* app;
-} FaacSLHRxEmuModel;
-
-typedef struct {
-    uint32_t fix;
-    uint32_t hop;
-    uint32_t sn;
-    uint8_t btn;
-    uint32_t cnt;
-    uint32_t seed;
-} FaacSLHData;
+} FaacSLHRxEmuModelNormal;
 
 /**
  * @brief   Reference to a FaacSLHRxEmuModel object
 */
 typedef struct {
-    FaacSLHRxEmuModel* model;
-} FaacSLHRxEmuRefModel;
+    FaacSLHRxEmuModelNormal* model;
+} FaacSLHRxEmuRefModelNormal;
 
-typedef enum {
-    FaacSLHRxEmuWaitingProgSignal,
-    FaacSLHRxEmuWaitingFirstAfterProg,
-    FaacSLHRxEmuWaitingSecondAfterProg,
-    FaacSLHRxEMuNormal,
-} FaacSLHRxEmuReceiverMode;
+typedef struct {
+    uint32_t seed;
+    uint8_t mCnt;
+
+    FuriString* key;
+    FuriString* info;
+    void* app;
+} FaacSLHRxEmuModelProg;
+
+typedef struct {
+    FaacSLHRxEmuModelProg* model;
+} FaacSLHRxEmuRefModelProg;
 
 /**
  * @brief   Struct of the main app
@@ -58,13 +49,14 @@ typedef struct {
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
 
-    View* view_receive;
+    View* view_normal;
+    View* view_prog;
 
     Widget* widget_about;
     Widget* widget_last_transmission;
 
-    FaacSLHRxEmuModel* model;
+    FaacSLHRxEmuModelNormal* model_normal;
+    FaacSLHRxEmuModelProg* model_prog;
     FaacSLHRxEmu* subghz;
-    FaacSLHRxEmuReceiverMode mode;
-    FaacSLHData* last_transmission;
+    FuriString* last_transmission;
 } FaacSLHRxEmuApp;
