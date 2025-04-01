@@ -2,6 +2,7 @@
 
 #include "faac_slh_rx_emu_structs.h"
 #include "faac_slh_rx_emu_about.h"
+#include "faac_slh_rx_emu_utils.h"
 #include "faac_slh_rx_emu_parser.h"
 
 #ifdef TAG
@@ -24,9 +25,9 @@ typedef enum {
     FaacSLHRxEmuSubmenuIndexLastTransmission,
 } FaacSLHRxEmuSubmenuIndex;
 
-static bool parse_packet(FuriString* buffer, void* context) {
+static bool parse_packet_normal(FuriString* buffer, void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
-    // PERHCÉ VIBRA DUE VOLTE?
+    // PERCHÉ VIBRA DUE VOLTE?
     // Penso sia legato al fatto che il firmware fa vibrare alla ricezione di un segnale FAAC SLH quindi questa che imposto è una seconda vibrazione
     furi_hal_vibro_on(true);
     furi_delay_ms(50);
@@ -36,13 +37,42 @@ static bool parse_packet(FuriString* buffer, void* context) {
         // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "FAAC SLH");
         if(furi_string_search_str(buffer, "Master") != FURI_STRING_FAILURE) {
-            parse_faac_slh_prog(app, buffer);
+            furi_string_printf(app->model_normal->info, "Prog key, ignoring");
+            __gui_redraw();
+            // return false;
         } else {
             parse_faac_slh_normal(app, buffer);
         }
     } else {
         // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "Not FAAC SLH");
+        // return false;
+    }
+
+    return true;
+}
+
+static bool parse_packet_prog(FuriString* buffer, void* context) {
+    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
+
+    furi_hal_vibro_on(true);
+    furi_delay_ms(50);
+    furi_hal_vibro_on(false);
+
+    if(furi_string_start_with_str(buffer, "Faac SLH 64bit")) {
+        // Mi piacerebbe avere una devboard
+        FURI_LOG_I(TAG, "FAAC SLH");
+        if(furi_string_search_str(buffer, "Master") == FURI_STRING_FAILURE) {
+            furi_string_printf(app->model_prog->info, "Normal key, ignoring");
+            __gui_redraw();
+            // return false;
+        } else {
+            parse_faac_slh_prog(app, buffer);
+        }
+    } else {
+        // Mi piacerebbe avere una devboard
+        FURI_LOG_I(TAG, "Not FAAC SLH");
+        // return false;
     }
 
     return true;
@@ -152,11 +182,17 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewAbout);
         break;
     case FaacSLHRxEmuSubmenuIndexNormal:
-        start_listening(app->subghz, parse_packet, app);
+        start_listening(app->subghz, parse_packet_normal, app);
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewNormal);
         break;
     case FaacSLHRxEmuSubmenuIndexProg:
-        start_listening(app->subghz, parse_packet, app);
+        furi_string_printf(app->model_prog->info, "Waiting");
+        if(app->subghz != NULL) {
+            // Brutto, lo so, ma altrimenti bisognerebbe modificare significativamente la libreria di unleashed
+            faac_slh_rx_emu_subghz_free(app->subghz);
+            faac_slh_rx_emu_subghz_alloc();
+        }
+        start_listening(app->subghz, parse_packet_prog, app);
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewProg);
         break;
     case FaacSLHRxEmuSubmenuIndexLastTransmission:
@@ -195,6 +231,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->subghz = faac_slh_rx_emu_subghz_alloc();
 
     app->last_transmission = furi_string_alloc();
+    furi_string_printf(app->last_transmission, "Nothing received yet");
 
     app->model_normal = malloc(sizeof(FaacSLHRxEmuModelNormal));
     app->model_normal->code_fix = 0x0;
@@ -204,7 +241,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_normal->key = furi_string_alloc();
     app->model_normal->info = furi_string_alloc();
     furi_string_printf(app->model_normal->key, "None received");
-    furi_string_printf(app->model_normal->info, "OK");
+    furi_string_printf(app->model_normal->info, "No remote memorized");
 
     app->model_prog = malloc(sizeof(FaacSLHRxEmuModelProg));
     app->model_prog->seed = 0x0;
@@ -212,7 +249,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_prog->key = furi_string_alloc();
     app->model_prog->info = furi_string_alloc();
     furi_string_printf(app->model_prog->key, "None received");
-    furi_string_printf(app->model_prog->info, "OK");
+    furi_string_printf(app->model_prog->info, "Waiting");
 
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);

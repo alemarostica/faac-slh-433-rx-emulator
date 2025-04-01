@@ -1,7 +1,5 @@
 #include "faac_slh_rx_emu_parser.h"
 #include "faac_slh_rx_emu_utils.h"
-// Tutto questo dovrà essere rifatto perché non voglio che il model diventi un tramite per lo scambio dati
-// Dovrebbe esserci una struttura dati che tiene tipo la last read
 
 uint32_t last_decode = 0;
 void parse_faac_slh_normal(void* context, FuriString* buffer) {
@@ -17,49 +15,10 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
 
     furi_string_printf(
         app->last_transmission, "Last transmission:\n%s", furi_string_get_cstr(buffer));
-    /*
-    if(furi_string_search_str(buffer, "Master") == FURI_STRING_FAILURE) {
-        furi_string_printf(app->model_normal->info, "Normal key, ignoring");
-        __gui_redraw();
-        return;
-    }
-    // Maybe have different variables for the programming screen and the normal screen in the model?
-    // So that when you switch between the screen no jumbled mess appears?
-    // Clear previous transmission
-    data->fix = 0x0;
-    data->hop = 0x0;
-    data->sn = 0x0;
-    data->seed = 0x0;
-    data->btn = 0x0;
-    data->cnt = 0x0;
 
-    // I think Ke is a typo in the lib file, should be Key
-    __furi_string_extract_string(buffer, 0, "Ke:", '\r', model->key);
-    data->seed = __furi_string_extract_int(buffer, "Seed:", ' ', FAILED_TO_PARSE);
-    // Also si può fare in modo che quando c'è un remote memorizzato non può entrare in memorizing almeno che non sia eliminato il remote
-    // Oppure semplicemente se si riavvia la memorizing mode si azzera tutto
-
-    // This count is not the remote counter but the mCnt of the programming mode.
-    data->cnt =
-        __furi_string_extract_int(buffer, "mCnt:", '\0' placeholder , FAILED_TO_PARSE);
-    model->count = data->cnt;
-    if(data->seed != FAILED_TO_PARSE) {
-        model->seed = data->seed;
-    }
-    */
-
-    if(furi_string_search_str(buffer, "Master") != FURI_STRING_FAILURE) {
-        furi_string_printf(app->model_normal->info, "Prog key, ignoring");
-        __gui_redraw();
-        return;
-    }
     __furi_string_extract_string(buffer, 0, "Key:", '\r', app->model_normal->key);
-    // (゜-゜)
-    // Se invio un segnale normale restituisce BADCODE
-    // Se invio un prog restituisce BADCODE
-    // Se invio un normale dopo un prog il counter è corretto
-    // Deve avere qualcosa a che fare con il decoding del protocollo che ancora non mi è chiaro
-    if(app->model_normal->seed == 0x0) {
+
+    if(furi_string_search_str(buffer, "Cnt:") == FURI_STRING_FAILURE) {
         app->model_normal->code_fix =
             __furi_string_extract_int(buffer, "Fix:", '\r', FAILED_TO_PARSE);
         app->model_normal->count = FAILED_TO_PARSE;
@@ -71,10 +30,64 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     }
     app->model_normal->hop = __furi_string_extract_int(buffer, "Hop:", ' ', FAILED_TO_PARSE);
 
+    if(app->model_normal->seed == 0x0) {
+        furi_string_printf(app->model_normal->info, "No remote memorized");
+    } else {
+        furi_string_printf(app->model_normal->info, "OK");
+    }
+
+    // Si presenta un problema significativo:
+    // Ipotizziamo che abbiamo un remote memorizzato perché è stata letta la prog key
+    // La lettura normale sarà parsata correttamente incluso il count
+    // Tuttavia se si riceve una prog key di un altro remote (o addirittura lo stesso quando invia quella versione strana flippata) il receiver sarà settato con il nuovo seed
+    // Il count quindi adesso non sarà più parsato correttamente
+    // Che facciamo?
+    // Come faccio a fare in modo che se non è in prog mode ignori completamente una prog key?
+    // Forse devo comprendere bene cosa succede con i file *_subghz
+    // Most likely è il funzionamento intended dell'implementazione del protocollo, non ci posso fare più di tanto
+
+    // SOLUZIONE TROVATA:
+    // Bisogna modificare /lib/subghz/protocols/faac_slh.c così:
+    // 26:  static bool already_programmed = false;
+    // 464: already_programmed = false;
+    // 594: if(!already_programmed) {
+    // 595:     instance->seed = data_prg[5] << 24 | data_prg[4] << 16 | data_prg[3] << 8 |
+    // 596:     data_prg[2];
+    // 597:     already_programmed = true;
+    // 698: }
+
     __gui_redraw();
 }
 
 void parse_faac_slh_prog(void* context, FuriString* buffer) {
-    UNUSED(context);
-    UNUSED(buffer);
+    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
+    FURI_LOG_T(TAG, "Decoding FAAC SLH...");
+    uint32_t now = furi_get_tick();
+    if(now - last_decode < furi_ms_to_ticks(500)) {
+        FURI_LOG_D(TAG, "Ignoring decode. Too soon.");
+        last_decode = now;
+        return;
+    }
+    last_decode = now;
+
+    furi_string_printf(
+        app->last_transmission, "Last transmission:\n%s", furi_string_get_cstr(buffer));
+
+    __furi_string_extract_string(buffer, 0, "Ke:", '\r', app->model_prog->key);
+    app->model_prog->seed = __furi_string_extract_int(buffer, "Seed:", ' ', FAILED_TO_PARSE);
+    if(app->model_normal->seed != 0x0 && app->model_normal->seed == app->model_prog->seed) {
+        furi_string_printf(app->model_prog->info, "Memory full");
+        return;
+    } else {
+        if(app->model_prog->seed == FAILED_TO_PARSE) {
+            furi_string_printf(app->model_prog->info, "Failed to read seed");
+        } else {
+            app->model_normal->seed = app->model_prog->seed;
+        }
+    }
+    app->model_prog->mCnt = __furi_string_extract_int(buffer, "mCnt:", '\0', FAILED_TO_PARSE);
+    furi_string_printf(app->model_prog->info, "OK");
+    furi_string_printf(app->model_normal->info, "Waiting");
+
+    __gui_redraw();
 }

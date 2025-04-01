@@ -33,7 +33,6 @@ typedef struct {
 
     FuriString* key;
     FuriString* info;
-    void* app;
 } FaacSLHRxEmuModelProg;
 
 typedef struct {
