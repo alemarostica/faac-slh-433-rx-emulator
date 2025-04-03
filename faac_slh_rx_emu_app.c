@@ -155,14 +155,8 @@ void faac_slh_rx_emu_prog_draw_callback(Canvas* canvas, void* my_model) {
     canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
     furi_string_printf(str, "Seed: %08lX  mCnt: %02X", model->seed, model->mCnt);
     canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-    furi_string_printf(
-        str, "1: Sn:%07lX Cnt:%05lX", model->first_key->serial, model->first_key->count);
-    canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
-    furi_string_printf(
-        str, "2: Sn:%07lX Cnt:%05lX", model->second_key->serial, model->second_key->count);
-    canvas_draw_str(canvas, 0, 52, furi_string_get_cstr(str));
     furi_string_printf(str, "Info: %s", furi_string_get_cstr(model->info));
-    canvas_draw_str(canvas, 0, 63, furi_string_get_cstr(str));
+    canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
 
     furi_string_free(str);
 }
@@ -192,11 +186,11 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         app->model_prog->mCnt = 0x0;
         app->model_prog->seed = 0x0;
         app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
-        app->model_prog->first_key->serial = 0x0;
-        app->model_prog->first_key->count = 0x0;
-        app->model_prog->second_key->serial = 0x0;
-        app->model_prog->second_key->count = 0x0;
-
+        app->mem_status = FaacSLHRxEmuMemStatusEmpty;
+        for(uint32_t i = 0; i < QUEUE_SIZE; i++) {
+            app->model_normal->keys[i]->fix = 0x0;
+            app->model_normal->keys[i]->count = 0x0;
+        }
         if(app->subghz != NULL) {
             // Brutto, lo so, ma altrimenti bisognerebbe modificare significativamente la libreria di unleashed
             faac_slh_rx_emu_subghz_free(app->subghz);
@@ -250,6 +244,10 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_normal->count = 0x0;
     app->model_normal->key = furi_string_alloc();
     app->model_normal->info = furi_string_alloc();
+    app->model_normal->status = FaacSLHRxEmuNormalStatusNone;
+    for(int i = 0; i < QUEUE_SIZE; i++) {
+        app->model_normal->keys[i] = malloc(sizeof(FaacSLHRxEmuInteral));
+    }
     furi_string_printf(app->model_normal->key, "None received");
     furi_string_printf(app->model_normal->info, "No remote memorized");
 
@@ -258,9 +256,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_prog->mCnt = 0x0;
     app->model_prog->key = furi_string_alloc();
     app->model_prog->info = furi_string_alloc();
-    app->model_prog->status = FaacSLHRxEmuProgStatusNone;
-    app->model_prog->first_key = malloc(sizeof(FaacSLHRxEmuInteral));
-    app->model_prog->second_key = malloc(sizeof(FaacSLHRxEmuInteral));
+    app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
     furi_string_printf(app->model_prog->key, "None received");
     furi_string_printf(app->model_prog->info, "Waiting");
 
@@ -367,8 +363,9 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     furi_string_free(app->model_normal->info);
     furi_string_free(app->model_prog->key);
     furi_string_free(app->model_prog->info);
-    free(app->model_prog->first_key);
-    free(app->model_prog->second_key);
+    for(int i = 0; i < QUEUE_SIZE; i++) {
+        free(app->model_normal->keys[i]);
+    }
     free(app->mem_remote);
 
     free(app->model_prog);

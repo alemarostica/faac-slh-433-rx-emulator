@@ -6,6 +6,34 @@
 #include "gui/view_dispatcher.h"
 #include "notification/notification.h"
 
+#define QUEUE_SIZE 8
+
+typedef enum {
+    FaacSLHRxEmuNormalStatusNone,
+    FaacSLHRxEmuNormalStatusSyncNormal,
+    FaacSLHRxEmuNormalStatusSyncFirst,
+    FaacSLHRxEmuNormalStatusSyncSecond,
+} FaacSLHRxEmuNormalStatus;
+
+typedef enum {
+    FaacSLHRxEmuProgStatusLearned,
+    FaacSLHRxEmuProgStatusWaitingForProg,
+} FaacSLHRxEmuProgStatus;
+
+typedef enum {
+    FaacSLHRxEmuMemStatusEmpty,
+    FaacSLHRxEmuMemStatusFull
+} FaacSLHRxEmuMemStatus;
+
+/**
+ * @brief   Keeps serial and count of memorized remote
+ * @details This struct is used to save a memorized remote but also comes into play when two sequential keys must be received in the programming phase
+*/
+typedef struct {
+    uint32_t fix;
+    uint32_t count;
+} FaacSLHRxEmuInteral;
+
 /**
  * @brief   The model for the Normal view
  * @details This model is only relevant to the Normal view, its only purpose is to keep data that will be drawn to screen
@@ -18,16 +46,12 @@ typedef struct {
 
     FuriString* key;
     FuriString* info;
-} FaacSLHRxEmuModelNormal;
 
-/**
- * @brief   Keeps serial and count of memorized remote
- * @details This struct is used to save a memorized remote but also comes into play when two sequential keys must be received in the programming phase
-*/
-typedef struct {
-    uint32_t serial;
-    uint32_t count;
-} FaacSLHRxEmuInteral;
+    FaacSLHRxEmuNormalStatus status;
+    // Testing ha provato che se tra il primo segnale ed il secondo sequenziale ci sono 4 altri segnali il resync deve partire da 0
+    // mi pare di capire
+    FaacSLHRxEmuInteral* keys[QUEUE_SIZE];
+} FaacSLHRxEmuModelNormal;
 
 /**
  * @brief   Reference to a FaacSLHRxEmuModelNormal object
@@ -35,13 +59,6 @@ typedef struct {
 typedef struct {
     FaacSLHRxEmuModelNormal* model;
 } FaacSLHRxEmuRefModelNormal;
-
-typedef enum {
-    FaacSLHRxEmuProgStatusNone,
-    FaacSLHRxEmuProgStatusWaitingForProg,
-    FaacSLHRxEmuProgStatusWaitingForFirst,
-    FaacSLHRxEmuProgStatusWaitingForSecond,
-} FaacSLHRxEmuProgStatus;
 
 /**
  * @brief   The model for the Prog view
@@ -55,9 +72,6 @@ typedef struct {
     FuriString* info;
 
     FaacSLHRxEmuProgStatus status;
-
-    FaacSLHRxEmuInteral* first_key;
-    FaacSLHRxEmuInteral* second_key;
 } FaacSLHRxEmuModelProg;
 
 /**
@@ -86,5 +100,6 @@ typedef struct {
     FaacSLHRxEmuModelProg* model_prog;
     FaacSLHRxEmu* subghz;
     FaacSLHRxEmuInteral* mem_remote;
+    FaacSLHRxEmuMemStatus mem_status;
     FuriString* last_transmission;
 } FaacSLHRxEmuApp;
