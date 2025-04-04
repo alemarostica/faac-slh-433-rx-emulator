@@ -1,20 +1,30 @@
 #include "faac_slh_rx_emu_parser.h"
 #include "faac_slh_rx_emu_utils.h"
 
+#define DECODE_DEBOUNCE_MS         500
+#define MAX_FUTURE_COUNT_OPEN      0x20
+#define MAX_FUTURE_COUNT_RESYNC    0x7999
+#define QUEUE_MIN_INDEX(key_index) ((key_index) > 4 ? (key_index) - 4 : 0)
+
 uint32_t last_decode = 0;
 static int key_index = 0;
+
+bool debounce_decode(uint32_t now) {
+    if(now - last_decode < furi_ms_to_ticks(DECODE_DEBOUNCE_MS)) {
+        FURI_LOG_D(TAG, "Ignoring decode. Too soon.");
+        last_decode = now;
+        return true;
+    }
+    last_decode = now;
+    return false;
+}
 
 void parse_faac_slh_normal(void* context, FuriString* buffer) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     FaacSLHRxEmuModelNormal* model = app->model_normal;
     FURI_LOG_T(TAG, "Decoding FAAC SLH...");
-    uint32_t now = furi_get_tick();
-    if(now - last_decode < furi_ms_to_ticks(500)) {
-        FURI_LOG_D(TAG, "Ignoring decode. Too soon.");
-        last_decode = now;
-        return;
-    }
-    last_decode = now;
+
+    if(debounce_decode(furi_get_tick())) return;
 
     furi_string_printf(
         app->last_transmission, "Last transmission:\n%s", furi_string_get_cstr(buffer));
@@ -26,8 +36,6 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     }
 
     __furi_string_extract_string(buffer, 0, "Key:", '\r', app->model_normal->key);
-
-    // Second major restructuring sarà mettere la coda all'interno dello struct app, così che possa essere consultata più facilmente
 
     app->model_normal->hop = __furi_string_extract_int(buffer, "Hop:", ' ', FAILED_TO_PARSE);
 
@@ -48,22 +56,20 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
 
         if(model->status == FaacSLHRxEmuNormalStatusNone) {
             if(model->fix == app->mem_remote->fix) {
-                if(model->fix == app->mem_remote->fix) {
-                    if(model->count == app->mem_remote->count) {
-                        furi_string_printf(model->info, "Replay attack");
-                    } else if(
-                        model->count > app->mem_remote->count &&
-                        model->count <= app->mem_remote->count + 0x20) {
-                        app->mem_remote->count = model->count;
-                        furi_string_printf(model->info, "Opened");
-                    } else if(
-                        model->count > app->mem_remote->count + 0x20 &&
-                        model->count <= app->mem_remote->count + 0x7999) {
-                        furi_string_printf(model->info, "Key is future, resync");
-                        model->status = FaacSLHRxEmuNormalStatusSyncNormal;
-                    } else {
-                        furi_string_printf(model->info, "Key is past");
-                    }
+                if(model->count == app->mem_remote->count) {
+                    furi_string_printf(model->info, "Replay attack");
+                } else if(
+                    model->count > app->mem_remote->count &&
+                    model->count <= app->mem_remote->count + MAX_FUTURE_COUNT_OPEN) {
+                    app->mem_remote->count = model->count;
+                    furi_string_printf(model->info, "Opened");
+                } else if(
+                    model->count > app->mem_remote->count + MAX_FUTURE_COUNT_OPEN &&
+                    model->count <= app->mem_remote->count + MAX_FUTURE_COUNT_RESYNC) {
+                    furi_string_printf(model->info, "Key is future, resync");
+                    model->status = FaacSLHRxEmuNormalStatusSyncNormal;
+                } else {
+                    furi_string_printf(model->info, "Key is past");
                 }
             } else {
                 furi_string_printf(model->info, "Unrecognized remote");
@@ -72,20 +78,16 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             model->status = FaacSLHRxEmuNormalStatusSyncSecond;
             furi_string_printf(model->info, "OK, first");
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
-            int min = 0 > key_index - 4 ? 0 : key_index - 4;
+            int min = QUEUE_MIN_INDEX(key_index);
             for(int i = key_index - 1; i >= min; i--) {
-                if(model->fix == app->keys[i]->fix) {
-                    if(model->count == app->keys[i]->count + 1) {
-                        furi_string_printf(model->info, "OK, programmed");
-                        app->mem_remote->fix = model->fix;
-                        app->mem_remote->count = model->count;
-                        model->status = FaacSLHRxEmuNormalStatusNone;
-                        app->mem_status = FaacSLHRxEmuMemStatusFull;
-                        // Azzeriamo tutto meno che le ultime due ricezioni?
-                        break;
-                    } else {
-                        furi_string_printf(model->info, "Invalid key");
-                    }
+                if(model->fix == app->keys[i]->fix && model->count == app->keys[i]->count + 1) {
+                    furi_string_printf(model->info, "Opened, programmed");
+                    app->mem_remote->fix = model->fix;
+                    app->mem_remote->count = model->count;
+                    model->status = FaacSLHRxEmuNormalStatusNone;
+                    app->mem_status = FaacSLHRxEmuMemStatusFull;
+                    // Azzeriamo tutto meno che le ultime due ricezioni?
+                    break;
                 } else {
                     furi_string_printf(model->info, "Invalid key");
                 }
@@ -93,29 +95,26 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         }
         if(model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
             if(model->fix == app->mem_remote->fix) {
-                if(model->count > app->mem_remote->count + 0x20) {
+                if(model->count > app->mem_remote->count + MAX_FUTURE_COUNT_OPEN) {
                     for(int i = key_index - 1; i > 0; i--) {
-                        if(model->fix == app->keys[i]->fix) {
-                            if(model->count == app->keys[i]->count + 1) {
-                                furi_string_printf(model->info, "OK, resynced");
-                                model->status = FaacSLHRxEmuNormalStatusNone;
-                                app->mem_remote->count = model->count;
-                                break;
-                            }
+                        if(model->fix == app->keys[i]->fix &&
+                           model->count == app->keys[i]->count + 1) {
+                            furi_string_printf(model->info, "Opened, resynced");
+                            model->status = FaacSLHRxEmuNormalStatusNone;
+                            app->mem_remote->count = model->count;
+                            break;
                         }
                     }
                 } else if(
                     model->count > app->mem_remote->count &&
-                    model->count <= app->mem_remote->count + 0x20) {
+                    model->count <= app->mem_remote->count + MAX_FUTURE_COUNT_OPEN) {
                     for(int i = key_index - 1; i > 0; i--) {
-                        if(model->fix == app->keys[i]->fix) {
-                            if(model->count > app->keys[i]->count &&
-                               model->count <= app->keys[i]->count + 0x20) {
-                                furi_string_printf(model->info, "Opened, in order");
-                                model->status = FaacSLHRxEmuNormalStatusNone;
-                                app->mem_remote->count = model->count;
-                                break;
-                            }
+                        if(model->fix == app->keys[i]->fix && model->count > app->keys[i]->count &&
+                           model->count <= app->keys[i]->count + MAX_FUTURE_COUNT_OPEN) {
+                            furi_string_printf(model->info, "Opened, in order");
+                            model->status = FaacSLHRxEmuNormalStatusNone;
+                            app->mem_remote->count = model->count;
+                            break;
                         }
                     }
                 }
@@ -124,8 +123,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
 
         if(key_index >= QUEUE_SIZE - 1) {
             for(int i = 1; i < QUEUE_SIZE; i++) {
-                app->keys[i - 1]->fix = app->keys[i]->fix;
-                app->keys[i - 1]->count = app->keys[i]->count;
+                memmove(app->keys[i - 1], app->keys[i], sizeof(FaacSLHRxEmuInteral));
             }
             key_index = QUEUE_SIZE - 1;
             app->keys[QUEUE_SIZE - 1]->fix = 0x0;
@@ -161,7 +159,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     // 698: }
 
     // Some behaviours:
-    // se è massimo 0x20 count nel futuro apre
+    // se è massimo MAX_FUTURE_COUNT_OPEN count nel futuro apre
     // se è massimo 0x8000 count nel future deve resyncare
     // NOTA: per resyncare anche la seconda chiave ricevuta deve essere all'interno del futuro di 0x8000 count
     // Se un segnale è totalmente futuro il count non va avanti
@@ -179,13 +177,8 @@ void parse_faac_slh_prog(void* context, FuriString* buffer) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     FaacSLHRxEmuModelProg* model = app->model_prog;
     FURI_LOG_T(TAG, "Decoding FAAC SLH...");
-    uint32_t now = furi_get_tick();
-    if(now - last_decode < furi_ms_to_ticks(500)) {
-        FURI_LOG_D(TAG, "Ignoring decode. Too soon.");
-        last_decode = now;
-        return;
-    }
-    last_decode = now;
+
+    if(debounce_decode(furi_get_tick())) return;
 
     furi_string_printf(
         app->last_transmission, "Last transmission:\n%s", furi_string_get_cstr(buffer));
@@ -212,7 +205,7 @@ void parse_faac_slh_prog(void* context, FuriString* buffer) {
         model->status = FaacSLHRxEmuProgStatusLearned;
         app->model_normal->status = FaacSLHRxEmuNormalStatusSyncFirst;
         furi_string_printf(app->model_normal->info, "Syncing prog");
-        furi_string_printf(model->info, "OK Prog");
+        furi_string_printf(model->info, "OK, Prog");
     } else if(model->status == FaacSLHRxEmuProgStatusLearned) {
         // At this stage a reomte has been memorized, nothing else received will be saved
         furi_string_printf(model->info, "Memory full");
