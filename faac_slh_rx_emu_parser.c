@@ -34,101 +34,108 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     if(app->mem_status == FaacSLHRxEmuMemStatusFull ||
        model->status == FaacSLHRxEmuNormalStatusSyncFirst ||
        model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
-        app->model_normal->code_fix =
-            __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
-        app->model_normal->count =
-            __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
+        model->fix = __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
+        model->count = __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
+
+        if(model->fix == FAILED_TO_PARSE || model->count == FAILED_TO_PARSE) {
+            furi_string_printf(model->info, "Failed to parse, retry");
+            __gui_redraw();
+            return;
+        }
+
+        app->keys[key_index]->fix = model->fix;
+        app->keys[key_index]->count = model->count;
 
         if(model->status == FaacSLHRxEmuNormalStatusNone) {
-            if(model->code_fix == app->mem_remote->fix) {
-                if(model->count == app->mem_remote->count) {
-                    furi_string_printf(model->info, "Replay attack");
-                } else if(
-                    model->count > app->mem_remote->count &&
-                    model->count <= app->mem_remote->count + 0x20) {
-                    furi_string_printf(model->info, "Opened");
-                    app->mem_remote->count += 1;
-                } else if(
-                    model->count > app->mem_remote->count + 0x20 &&
-                    model->count <= app->mem_remote->count + 0x7999) {
-                    model->keys[key_index]->fix = model->code_fix;
-                    model->keys[key_index]->count = model->count;
-                    key_index += 1;
-                    model->status = FaacSLHRxEmuNormalStatusSyncNormal;
-                    furi_string_printf(model->info, "Key is future, resync");
-                } else {
-                    furi_string_printf(model->info, "Key is past");
+            if(model->fix == app->mem_remote->fix) {
+                if(model->fix == app->mem_remote->fix) {
+                    if(model->count == app->mem_remote->count) {
+                        furi_string_printf(model->info, "Replay attack");
+                    } else if(
+                        model->count > app->mem_remote->count &&
+                        model->count <= app->mem_remote->count + 0x20) {
+                        app->mem_remote->count = model->count;
+                        furi_string_printf(model->info, "Opened");
+                    } else if(
+                        model->count > app->mem_remote->count + 0x20 &&
+                        model->count <= app->mem_remote->count + 0x7999) {
+                        furi_string_printf(model->info, "Key is future, resync");
+                        model->status = FaacSLHRxEmuNormalStatusSyncNormal;
+                    } else {
+                        furi_string_printf(model->info, "Key is past");
+                    }
                 }
             } else {
                 furi_string_printf(model->info, "Unrecognized remote");
             }
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncFirst) {
-            model->keys[key_index]->fix =
-                __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
-            model->keys[key_index]->count =
-                __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
-            if(model->keys[key_index]->fix == FAILED_TO_PARSE ||
-               model->keys[key_index]->count == FAILED_TO_PARSE) {
-                furi_string_printf(model->info, "Failed to parse, retry");
-                __gui_redraw();
-                return;
-            }
-            key_index += 1;
             model->status = FaacSLHRxEmuNormalStatusSyncSecond;
-            furi_string_printf(model->info, "Ok, first");
-        } else if(
-            model->status == FaacSLHRxEmuNormalStatusSyncSecond ||
-            model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
-            model->keys[key_index]->fix =
-                __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
-            model->keys[key_index]->count =
-                __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
-            if(model->keys[key_index]->fix == FAILED_TO_PARSE ||
-               model->keys[key_index]->count == FAILED_TO_PARSE) {
-                furi_string_printf(model->info, "Failed to parse, retry");
-                model->status = FaacSLHRxEmuNormalStatusSyncFirst;
-                __gui_redraw();
-                return;
-            }
-            // Set the start index based on the kind of sync we are doing
-            int i = 5;
-            if(model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
-                i = 0 > key_index - 7 ? 0 : key_index - 7;
-            } else {
-                i = 0 > key_index - 4 ? 0 : key_index - 4;
-            }
-            for(i = (0 > key_index - 4 ? 0 : key_index - 4); i < key_index; i++) {
-                if(model->keys[i]->fix == model->keys[key_index]->fix) {
-                    if(model->keys[i]->count == model->keys[key_index]->count - 1) {
-                        app->mem_remote->fix = model->keys[key_index]->fix;
-                        app->mem_remote->count = model->keys[key_index]->count;
-                        furi_string_printf(model->info, "Ok, synced");
-                        app->mem_status = FaacSLHRxEmuMemStatusFull;
+            furi_string_printf(model->info, "OK, first");
+        } else if(model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
+            int min = 0 > key_index - 4 ? 0 : key_index - 4;
+            for(int i = key_index - 1; i >= min; i--) {
+                if(model->fix == app->keys[i]->fix) {
+                    if(model->count == app->keys[i]->count + 1) {
+                        furi_string_printf(model->info, "OK, programmed");
+                        app->mem_remote->fix = model->fix;
+                        app->mem_remote->count = model->count;
                         model->status = FaacSLHRxEmuNormalStatusNone;
-                        key_index = 0;
+                        app->mem_status = FaacSLHRxEmuMemStatusFull;
+                        // Azzeriamo tutto meno che le ultime due ricezioni?
                         break;
                     } else {
-                        furi_string_printf(model->info, "Non sequential keys");
+                        furi_string_printf(model->info, "Invalid key");
                     }
                 } else {
-                    furi_string_printf(model->info, "Fix numbers differ");
+                    furi_string_printf(model->info, "Invalid key");
                 }
-            }
-            if(key_index >= QUEUE_SIZE - 1) {
-                for(uint32_t i = 1; i < QUEUE_SIZE; i++) {
-                    model->keys[i - 1]->fix = model->keys[i]->fix;
-                    model->keys[i - 1]->count = model->keys[i]->count;
-                }
-                key_index = QUEUE_SIZE - 1;
-                model->keys[QUEUE_SIZE - 1]->fix = 0x0;
-                model->keys[QUEUE_SIZE - 1]->count = 0x0;
-            } else {
-                key_index += 1;
             }
         }
+        if(model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
+            if(model->fix == app->mem_remote->fix) {
+                if(model->count > app->mem_remote->count + 0x20) {
+                    for(int i = key_index - 1; i > 0; i--) {
+                        if(model->fix == app->keys[i]->fix) {
+                            if(model->count == app->keys[i]->count + 1) {
+                                furi_string_printf(model->info, "OK, resynced");
+                                model->status = FaacSLHRxEmuNormalStatusNone;
+                                app->mem_remote->count = model->count;
+                                break;
+                            }
+                        }
+                    }
+                } else if(
+                    model->count > app->mem_remote->count &&
+                    model->count <= app->mem_remote->count + 0x20) {
+                    for(int i = key_index - 1; i > 0; i--) {
+                        if(model->fix == app->keys[i]->fix) {
+                            if(model->count > app->keys[i]->count &&
+                               model->count <= app->keys[i]->count + 0x20) {
+                                furi_string_printf(model->info, "Opened, in order");
+                                model->status = FaacSLHRxEmuNormalStatusNone;
+                                app->mem_remote->count = model->count;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if(key_index >= QUEUE_SIZE - 1) {
+            for(int i = 1; i < QUEUE_SIZE; i++) {
+                app->keys[i - 1]->fix = app->keys[i]->fix;
+                app->keys[i - 1]->count = app->keys[i]->count;
+            }
+            key_index = QUEUE_SIZE - 1;
+            app->keys[QUEUE_SIZE - 1]->fix = 0x0;
+            app->keys[QUEUE_SIZE - 1]->count = 0x0;
+        } else {
+            key_index += 1;
+        }
+
     } else {
-        app->model_normal->code_fix =
-            __furi_string_extract_int(buffer, "Fix:", '\r', FAILED_TO_PARSE);
+        app->model_normal->fix = __furi_string_extract_int(buffer, "Fix:", '\r', FAILED_TO_PARSE);
         app->model_normal->count = FAILED_TO_PARSE;
         furi_string_printf(app->model_normal->info, "No remote memorized");
     }
@@ -161,7 +168,9 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     // se un segnale ricevuto è futuro ma quello dopo è accettabile si apre e basta
     // Nella fase di ascolto delle chiavi normali dopo la prog appare esserci una coda lunga massimo 5 elementi
     // C'è una coda lunga 8 per il resync, meaning che se vede una chiave lunga uno in più del più lungo counter sentito allora resynca al futuro che tiene anche i fix non riconosciuti
+    // Se una chiave è furuta checka se nella queue di chiavi lunga un numero erratico ce n'è una esattamente precedente
     // La coda per il mem sembra molto erratica ma sono ABBASTANZA sicuro che sia lunga solo 5
+    // Also non so veramente se quando riceve la master prog key il counter del ricevitore avanza
 
     __gui_redraw();
 }

@@ -127,8 +127,7 @@ void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
     canvas_set_font(canvas, FontSecondary);
     furi_string_printf(str, "Key: %s", furi_string_get_cstr(model->key));
     canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
-    furi_string_printf(
-        str, "Serial: %07lX  Btn: %01lX", model->code_fix >> 4, model->code_fix & 0xF);
+    furi_string_printf(str, "Serial: %07lX  Btn: %01lX", model->fix >> 4, model->fix & 0xF);
     canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
     if(model->count == FAILED_TO_PARSE) {
         furi_string_printf(str, "Count: Unknown");
@@ -188,8 +187,8 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
         app->mem_status = FaacSLHRxEmuMemStatusEmpty;
         for(uint32_t i = 0; i < QUEUE_SIZE; i++) {
-            app->model_normal->keys[i]->fix = 0x0;
-            app->model_normal->keys[i]->count = 0x0;
+            app->keys[i]->fix = 0x0;
+            app->keys[i]->count = 0x0;
         }
         if(app->subghz != NULL) {
             // Brutto, lo so, ma altrimenti bisognerebbe modificare significativamente la libreria di unleashed
@@ -238,7 +237,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     furi_string_printf(app->last_transmission, "Nothing received yet");
 
     app->model_normal = malloc(sizeof(FaacSLHRxEmuModelNormal));
-    app->model_normal->code_fix = 0x0;
+    app->model_normal->fix = 0x0;
     app->model_normal->hop = 0x0;
     app->model_normal->seed = 0x0;
     app->model_normal->count = 0x0;
@@ -246,7 +245,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_normal->info = furi_string_alloc();
     app->model_normal->status = FaacSLHRxEmuNormalStatusNone;
     for(int i = 0; i < QUEUE_SIZE; i++) {
-        app->model_normal->keys[i] = malloc(sizeof(FaacSLHRxEmuInteral));
+        app->keys[i] = malloc(sizeof(FaacSLHRxEmuInteral));
     }
     furi_string_printf(app->model_normal->key, "None received");
     furi_string_printf(app->model_normal->info, "No remote memorized");
@@ -364,7 +363,7 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     furi_string_free(app->model_prog->key);
     furi_string_free(app->model_prog->info);
     for(int i = 0; i < QUEUE_SIZE; i++) {
-        free(app->model_normal->keys[i]);
+        free(app->keys[i]);
     }
     free(app->mem_remote);
 

@@ -39,7 +39,7 @@ typedef struct {
  * @details This model is only relevant to the Normal view, its only purpose is to keep data that will be drawn to screen
 */
 typedef struct {
-    uint32_t code_fix;
+    uint32_t fix;
     uint32_t hop;
     uint32_t count;
     uint32_t seed;
@@ -48,9 +48,6 @@ typedef struct {
     FuriString* info;
 
     FaacSLHRxEmuNormalStatus status;
-    // Testing ha provato che se tra il primo segnale ed il secondo sequenziale ci sono 4 altri segnali il resync deve partire da 0
-    // mi pare di capire
-    FaacSLHRxEmuInteral* keys[QUEUE_SIZE];
 } FaacSLHRxEmuModelNormal;
 
 /**
@@ -101,5 +98,6 @@ typedef struct {
     FaacSLHRxEmu* subghz;
     FaacSLHRxEmuInteral* mem_remote;
     FaacSLHRxEmuMemStatus mem_status;
+    FaacSLHRxEmuInteral* keys[QUEUE_SIZE];
     FuriString* last_transmission;
 } FaacSLHRxEmuApp;
