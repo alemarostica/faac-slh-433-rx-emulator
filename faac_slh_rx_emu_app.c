@@ -120,7 +120,7 @@ uint32_t faac_slh_rx_emu_navigation_submenu_normal_callback(void* context) {
     return FaacSLHRxEmuViewSubmenu;
 }
 
-uint32_t faac_slh_rx_emu_submenu_prog_callback(void* context) {
+uint32_t faac_slh_rx_emu_navigation_submenu_prog_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     stop_listening(app->subghz);
 
@@ -297,8 +297,6 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_prog->key = furi_string_alloc();
     app->model_prog->info = furi_string_alloc();
     app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
-    furi_string_printf(app->model_prog->key, "None received");
-    furi_string_printf(app->model_prog->info, "Waiting");
 
     app->mem_remote = malloc(sizeof(FaacSLHRxEmuInteral));
 
@@ -369,8 +367,8 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     view_set_context(app->view_prog, app);
     view_set_draw_callback(app->view_prog, faac_slh_rx_emu_prog_draw_callback);
     view_set_input_callback(app->view_prog, faac_slh_rx_emu_input_callback);
-    view_set_previous_callback(app->view_prog, faac_slh_rx_emu_submenu_prog_callback);
-    view_allocate_model(app->view_prog, ViewModelTypeLockFree, sizeof(FaacSLHRxEmuModelProg));
+    view_set_previous_callback(app->view_prog, faac_slh_rx_emu_navigation_submenu_prog_callback);
+    view_allocate_model(app->view_prog, ViewModelTypeLockFree, sizeof(FaacSLHRxEmuRefModelProg));
     FaacSLHRxEmuRefModelProg* prog_model = view_get_model(app->view_prog);
     prog_model->model = app->model_prog;
     view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewProg, app->view_prog);
