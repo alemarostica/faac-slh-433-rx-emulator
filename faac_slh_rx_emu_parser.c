@@ -1,9 +1,13 @@
 #include "faac_slh_rx_emu_parser.h"
 #include "faac_slh_rx_emu_utils.h"
 
+// Ho difficoltà a testare il caso seed = 0x0 e/o fix = 0x0
+// Il flipper si blocca provando ad inviare la normal key e non capisco il perché...
+// Penso sia dovuto a quel allow_zero_seed nella libreria ma non ne sono sicuro...
+
 #define DECODE_DEBOUNCE_MS         500
 #define MAX_FUTURE_COUNT_OPEN      0x20
-#define MAX_FUTURE_COUNT_RESYNC    0x7999
+#define MAX_FUTURE_COUNT_RESYNC    0x8000
 #define QUEUE_MIN_INDEX(key_index) ((key_index) > 4 ? (key_index) - 4 : 0)
 
 uint32_t last_decode = 0;
@@ -17,6 +21,16 @@ bool debounce_decode(uint32_t now) {
     }
     last_decode = now;
     return false;
+}
+
+bool is_within_range(uint32_t value, uint32_t start, uint32_t end) {
+    uint32_t c_end = end & 0xFFFFF;
+
+    if(start <= c_end) {
+        return (value >= start && value <= end);
+    } else {
+        return (value >= start || value <= end);
+    }
 }
 
 void parse_faac_slh_normal(void* context, FuriString* buffer) {
@@ -58,14 +72,16 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             if(model->fix == app->mem_remote->fix) {
                 if(model->count == app->mem_remote->count) {
                     furi_string_printf(model->info, "Replay attack");
-                } else if(
-                    model->count > app->mem_remote->count &&
-                    model->count <= app->mem_remote->count + MAX_FUTURE_COUNT_OPEN) {
+                } else if(is_within_range(
+                              model->count,
+                              app->mem_remote->count + 1,
+                              app->mem_remote->count + MAX_FUTURE_COUNT_OPEN)) {
                     app->mem_remote->count = model->count;
                     furi_string_printf(model->info, "Opened");
-                } else if(
-                    model->count > app->mem_remote->count + MAX_FUTURE_COUNT_OPEN &&
-                    model->count <= app->mem_remote->count + MAX_FUTURE_COUNT_RESYNC) {
+                } else if(is_within_range(
+                              model->count,
+                              app->mem_remote->count + MAX_FUTURE_COUNT_OPEN + 1,
+                              app->mem_remote->count + MAX_FUTURE_COUNT_RESYNC)) {
                     furi_string_printf(model->info, "Key is future, resync");
                     model->status = FaacSLHRxEmuNormalStatusSyncNormal;
                 } else {
@@ -78,6 +94,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             model->status = FaacSLHRxEmuNormalStatusSyncSecond;
             furi_string_printf(model->info, "OK, first");
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
+            // il massimo di chiavi passate mantenute nella prog mode sembra essere univocamente 5
             int min = QUEUE_MIN_INDEX(key_index);
             for(int i = key_index - 1; i >= min; i--) {
                 if(model->fix == app->keys[i]->fix && model->count == app->keys[i]->count + 1) {
@@ -86,6 +103,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
                     app->mem_remote->count = model->count;
                     model->status = FaacSLHRxEmuNormalStatusNone;
                     app->mem_status = FaacSLHRxEmuMemStatusFull;
+                    app->mem_seed = app->model_prog->seed;
                     // Azzeriamo tutto meno che le ultime due ricezioni?
                     break;
                 } else {
@@ -94,29 +112,31 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             }
         }
         if(model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
+            // Il numero di chiavi passate mantenute durante un resync standard non mi è chiaro, in vari momenti il ricevitore si comporta in modo diverso senza apparente motivo.
             if(model->fix == app->mem_remote->fix) {
-                if(model->count > app->mem_remote->count + MAX_FUTURE_COUNT_OPEN) {
+                if(is_within_range(
+                       model->count,
+                       app->mem_remote->count + MAX_FUTURE_COUNT_OPEN + 1,
+                       app->mem_remote->count + MAX_FUTURE_COUNT_RESYNC + 1)) {
                     for(int i = key_index - 1; i > 0; i--) {
                         if(model->fix == app->keys[i]->fix &&
-                           model->count == app->keys[i]->count + 1) {
+                           model->count == ((app->keys[i]->count + 1) & 0xFFFFF)) {
                             furi_string_printf(model->info, "Opened, resynced");
                             model->status = FaacSLHRxEmuNormalStatusNone;
                             app->mem_remote->count = model->count;
                             break;
                         }
                     }
-                } else if(
-                    model->count > app->mem_remote->count &&
-                    model->count <= app->mem_remote->count + MAX_FUTURE_COUNT_OPEN) {
-                    for(int i = key_index - 1; i > 0; i--) {
-                        if(model->fix == app->keys[i]->fix && model->count > app->keys[i]->count &&
-                           model->count <= app->keys[i]->count + MAX_FUTURE_COUNT_OPEN) {
-                            furi_string_printf(model->info, "Opened, in order");
-                            model->status = FaacSLHRxEmuNormalStatusNone;
-                            app->mem_remote->count = model->count;
-                            break;
-                        }
-                    }
+                } else if(is_within_range(
+                              model->count,
+                              app->mem_remote->count + 1,
+                              app->mem_remote->count + MAX_FUTURE_COUNT_OPEN)) {
+                    furi_string_printf(model->info, "Opened, in order");
+                    model->status = FaacSLHRxEmuNormalStatusNone;
+                    app->mem_remote->count = model->count;
+                } else {
+                    furi_string_printf(model->info, "Key is past");
+                    model->status = FaacSLHRxEmuNormalStatusNone;
                 }
             }
         }
@@ -133,7 +153,14 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         }
 
     } else {
-        app->model_normal->fix = __furi_string_extract_int(buffer, "Fix:", '\r', FAILED_TO_PARSE);
+        if(furi_string_search_str(buffer, "Cnt:") == FURI_STRING_FAILURE) {
+            app->model_normal->fix =
+                __furi_string_extract_int(buffer, "Fix:", '\r', FAILED_TO_PARSE);
+        } else {
+            app->model_normal->fix =
+                __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
+        }
+
         app->model_normal->count = FAILED_TO_PARSE;
         furi_string_printf(app->model_normal->info, "No remote memorized");
     }
@@ -159,7 +186,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     // 698: }
 
     // Some behaviours:
-    // se è massimo MAX_FUTURE_COUNT_OPEN count nel futuro apre
+    // se il count è massimo count + 0x20 apre
     // se è massimo 0x8000 count nel future deve resyncare
     // NOTA: per resyncare anche la seconda chiave ricevuta deve essere all'interno del futuro di 0x8000 count
     // Se un segnale è totalmente futuro il count non va avanti
@@ -169,6 +196,9 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     // Se una chiave è furuta checka se nella queue di chiavi lunga un numero erratico ce n'è una esattamente precedente
     // La coda per il mem sembra molto erratica ma sono ABBASTANZA sicuro che sia lunga solo 5
     // Also non so veramente se quando riceve la master prog key il counter del ricevitore avanza
+
+    // Questa roba non dovrebbe mai essere necessaria, ma non mi fido di me stesso
+    if(app->mem_remote->count > 0xFFFFF) app->mem_remote->count &= 0xFFFFF;
 
     __gui_redraw();
 }

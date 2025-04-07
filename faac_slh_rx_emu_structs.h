@@ -78,6 +78,15 @@ typedef struct {
     FaacSLHRxEmuModelProg* model;
 } FaacSLHRxEmuRefModelProg;
 
+typedef struct {
+    FaacSLHRxEmuInteral* remote;
+    void* app;
+} FaacSLHRxEmuModelMemory;
+
+typedef struct {
+    FaacSLHRxEmuModelMemory* model;
+} FaacSLHRxEmuRefModelMemory;
+
 /**
  * @brief   Struct of the main app
 */
@@ -89,15 +98,18 @@ typedef struct {
 
     View* view_normal;
     View* view_prog;
+    View* view_memory;
 
     Widget* widget_about;
     Widget* widget_last_transmission;
 
     FaacSLHRxEmuModelNormal* model_normal;
     FaacSLHRxEmuModelProg* model_prog;
+    FaacSLHRxEmuModelMemory* model_memory;
     FaacSLHRxEmu* subghz;
     FaacSLHRxEmuInteral* mem_remote;
     FaacSLHRxEmuMemStatus mem_status;
+    uint32_t mem_seed;
     FaacSLHRxEmuInteral* keys[QUEUE_SIZE];
     FuriString* last_transmission;
 } FaacSLHRxEmuApp;
