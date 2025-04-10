@@ -229,7 +229,7 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         if(app->subghz != NULL) {
             // Brutto, lo so, ma altrimenti bisognerebbe modificare significativamente la libreria di unleashed
             faac_slh_rx_emu_subghz_free(app->subghz);
-            faac_slh_rx_emu_subghz_alloc();
+            app->subghz = faac_slh_rx_emu_subghz_alloc();
         }
         start_listening(app->subghz, parse_packet_prog, app);
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewProg);
