@@ -6,28 +6,38 @@
 #include "gui/view_dispatcher.h"
 #include "notification/notification.h"
 
+// The queue of past keys received, used in the resync phase
 #define QUEUE_SIZE 8
 
+/**
+ * @brief   States of the receiver
+*/
 typedef enum {
-    FaacSLHRxEmuNormalStatusNone,
-    FaacSLHRxEmuNormalStatusSyncNormal,
-    FaacSLHRxEmuNormalStatusSyncFirst,
-    FaacSLHRxEmuNormalStatusSyncSecond,
+    FaacSLHRxEmuNormalStatusNone, // Receiving keys normally
+    FaacSLHRxEmuNormalStatusSyncNormal, // Resyncing if last received key was future
+    FaacSLHRxEmuNormalStatusSyncFirst, // Waiting for first sequential prog key
+    FaacSLHRxEmuNormalStatusSyncSecond, // Waiting for second sequential prog key
 } FaacSLHRxEmuNormalStatus;
 
+/**
+ * @brief   Prog mode states
+*/
 typedef enum {
-    FaacSLHRxEmuProgStatusLearned,
-    FaacSLHRxEmuProgStatusWaitingForProg,
+    FaacSLHRxEmuProgStatusLearned, // The seed was learned
+    FaacSLHRxEmuProgStatusWaitingForProg, // Seed clear, waiting to learn another seed
 } FaacSLHRxEmuProgStatus;
 
+/**
+ * @brief   Memory states
+*/
 typedef enum {
-    FaacSLHRxEmuMemStatusEmpty,
-    FaacSLHRxEmuMemStatusFull
+    FaacSLHRxEmuMemStatusEmpty, // No remote memorized
+    FaacSLHRxEmuMemStatusFull, // Remote is memorized and synced
 } FaacSLHRxEmuMemStatus;
 
 /**
  * @brief   Keeps serial and count of memorized remote
- * @details This struct is used to save a memorized remote but also comes into play when two sequential keys must be received in the programming phase
+ * @details This struct is used to save a memorized remote but also comes into play when two sequential keys must be received in the programming and syncing phases
 */
 typedef struct {
     uint32_t fix;
@@ -36,7 +46,6 @@ typedef struct {
 
 /**
  * @brief   The model for the Normal view
- * @details This model is only relevant to the Normal view, its only purpose is to keep data that will be drawn to screen
 */
 typedef struct {
     uint32_t fix;
@@ -59,7 +68,6 @@ typedef struct {
 
 /**
  * @brief   The model for the Prog view
- * @details This model is only relevant to the Prog view, its only purpose is to keep data that will be drawn to screen
 */
 typedef struct {
     uint32_t seed;
@@ -78,11 +86,17 @@ typedef struct {
     FaacSLHRxEmuModelProg* model;
 } FaacSLHRxEmuRefModelProg;
 
+/**
+ * @brief   The model for the Memory View
+*/
 typedef struct {
     FaacSLHRxEmuInteral* remote;
     void* app;
 } FaacSLHRxEmuModelMemory;
 
+/**
+ * @brief   Reference to a FaacSLHRxEmuModelMemory
+*/
 typedef struct {
     FaacSLHRxEmuModelMemory* model;
 } FaacSLHRxEmuRefModelMemory;

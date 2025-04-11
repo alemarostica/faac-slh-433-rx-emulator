@@ -1,9 +1,37 @@
 #include "faac_slh_rx_emu_parser.h"
 #include "faac_slh_rx_emu_utils.h"
 
-// Ho difficoltà a testare il caso seed = 0x0 e/o fix = 0x0
-// Il flipper si blocca provando ad inviare la normal key e non capisco il perché...
-// Penso sia dovuto a quel allow_zero_seed nella libreria ma non ne sono sicuro...
+/*
+NOTES:
+ -  I have difficulty testing the case where the seed is 0x0 and/or fix = 0x0
+    The flipper locks up when I send the normal key
+    I think it is because of the allow_zero_seed var in lib/subghz/protocols/faac_slh.c but I'm not sure
+ -  Explanation for the editing of the Unleased firmware
+     -  Suppose you have a memorized remote because the prog key was read
+        A normal key will be correctly decoded, count included
+        If a prog key from another remote is received the receiver will be set to decode based on the new seed received
+        The original remote will not be parsed correctly anymore
+        I imagine this is the intended implementation of the protocol but it does not work with this app
+        Must edit the firmware as specified in README
+ -  The remote sometimes sends a weird seed:
+     -  If the normal seed is XXXXYYYY, sometimes YYYYXXXX is sent, no idea why
+     -  Also the hop value sent by the remote after does not coincide with the sent seed
+ -  Some behaviours of the receiver:
+     -  If the counter in the received key is <= internal count + 0x20 then it opens
+     -  If the counter in the received key is <= internal count + 0x8000 it must resync
+     -  Any other value is considered past
+     -  To resync the receiver must receive two sequential keys, so if count in key1 = x, count in key2 must be x + 1
+     -  The second received key may be outside the internal count + 0x8000 range
+     -  The internal count is not updated unless the received key is valid or the internal count is resynced
+     -  If a future key is received but the next is in range the gate is opened
+     -  If a future key is received the receiver will check if a past key is immediately preceding the one just received and resync if so
+         -  I could not determine the number of past keys kept in memory
+            Sometimes it seemed it only kept 5 while other times up to 8
+            At most, based on lenghty testing, it seemed to keep a maximum of 8 past keys so I decided to use this value for the queue
+         - This queue keeps also keys with a different fix from the memorized one
+     -  The programming phase behaves similarly to the resync phase but checks at most 5 past keys
+     -  I don't know is the internal counter is advanced when receiving a prog key
+*/
 
 #define DECODE_DEBOUNCE_MS         500
 #define MAX_FUTURE_COUNT_OPEN      0x20
@@ -13,6 +41,12 @@
 uint32_t last_decode = 0;
 static int key_index = 0;
 
+/**
+ * @brief   Debounce the signal.
+ * @details This function checks if the last signal arrived within 500ms of the preceding signal.
+ * @param   now The time.
+ * @return  True if time between keys received is less than 500ms, false otherwise.
+*/
 bool debounce_decode(uint32_t now) {
     if(now - last_decode < furi_ms_to_ticks(DECODE_DEBOUNCE_MS)) {
         FURI_LOG_D(TAG, "Ignoring decode. Too soon.");
@@ -23,6 +57,14 @@ bool debounce_decode(uint32_t now) {
     return false;
 }
 
+/**
+ * @brief   Check circular range.
+ * @details This function checks if a value is in a circular range with max value 0xFFFFF.
+ * @param   value   The value.
+ * @param   start   The minimum value.
+ * @param   end     The maximum value.
+ * @return  true if in range, false otherwise.
+*/
 bool is_within_range(uint32_t value, uint32_t start, uint32_t end) {
     uint32_t c_end = end & 0xFFFFF;
 
@@ -56,6 +98,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
     if(app->mem_status == FaacSLHRxEmuMemStatusFull ||
        model->status == FaacSLHRxEmuNormalStatusSyncFirst ||
        model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
+        // Memory is full OR we need to memorize new remote
         model->fix = __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
         model->count = __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
 
@@ -69,6 +112,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         app->keys[key_index]->count = model->count;
 
         if(model->status == FaacSLHRxEmuNormalStatusNone) {
+            // We are reading normally
             if(model->fix == app->mem_remote->fix) {
                 if(model->count == app->mem_remote->count) {
                     furi_string_printf(model->info, "Replay attack");
@@ -91,10 +135,11 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
                 furi_string_printf(model->info, "Unrecognized remote");
             }
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncFirst) {
+            // We are reading the first key after a prog key
             model->status = FaacSLHRxEmuNormalStatusSyncSecond;
             furi_string_printf(model->info, "OK, first");
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
-            // il massimo di chiavi passate mantenute nella prog mode sembra essere univocamente 5
+            // We are reading the second key after a prog key
             int min = QUEUE_MIN_INDEX(key_index);
             for(int i = key_index - 1; i >= min; i--) {
                 if(model->fix == app->keys[i]->fix && model->count == app->keys[i]->count + 1) {
@@ -104,7 +149,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
                     model->status = FaacSLHRxEmuNormalStatusNone;
                     app->mem_status = FaacSLHRxEmuMemStatusFull;
                     app->mem_seed = app->model_prog->seed;
-                    // Azzeriamo tutto meno che le ultime due ricezioni?
+                    // Should it zero every past key except the two sync keys?
                     break;
                 } else {
                     furi_string_printf(model->info, "Invalid key");
@@ -112,7 +157,8 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             }
         }
         if(model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
-            // Il numero di chiavi passate mantenute durante un resync standard non mi è chiaro, in vari momenti il ricevitore si comporta in modo diverso senza apparente motivo.
+            // We are resyncing
+            // This is not an else if because it can resync at any time the are two sequntial keys in the past queue
             if(model->fix == app->mem_remote->fix) {
                 if(is_within_range(
                        model->count,
@@ -141,6 +187,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             }
         }
 
+        // Advance the key index
         if(key_index >= QUEUE_SIZE - 1) {
             for(int i = 1; i < QUEUE_SIZE; i++) {
                 memmove(app->keys[i - 1], app->keys[i], sizeof(FaacSLHRxEmuInteral));
@@ -153,6 +200,10 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         }
 
     } else {
+        // Memory is empty
+
+        // Even though memory is empty a prog key might have been received so the receiver might have been set to decode the count also
+        // So we must account for both cases
         if(furi_string_search_str(buffer, "Cnt:") == FURI_STRING_FAILURE) {
             app->model_normal->fix =
                 __furi_string_extract_int(buffer, "Fix:", '\r', FAILED_TO_PARSE);
@@ -165,39 +216,7 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         furi_string_printf(app->model_normal->info, "No remote memorized");
     }
 
-    // Si presenta un problema significativo:
-    // Ipotizziamo che abbiamo un remote memorizzato perché è stata letta la prog key
-    // La lettura normale sarà parsata correttamente incluso il count
-    // Tuttavia se si riceve una prog key di un altro remote (o addirittura lo stesso quando invia quella versione strana flippata) il receiver sarà settato con il nuovo seed
-    // Il count quindi adesso non sarà più parsato correttamente
-    // Che facciamo?
-    // Come faccio a fare in modo che se non è in prog mode ignori completamente una prog key?
-    // Forse devo comprendere bene cosa succede con i file *_subghz
-    // Most likely è il funzionamento intended dell'implementazione del protocollo, non ci posso fare più di tanto
-
-    // SOLUZIONE TROVATA:
-    // Bisogna modificare /lib/subghz/protocols/faac_slh.c così:
-    // 26:  static bool already_programmed = false;
-    // 464: already_programmed = false;
-    // 594: if(!already_programmed) {
-    // 595:     instance->seed = data_prg[5] << 24 | data_prg[4] << 16 | data_prg[3] << 8 |
-    // 596:     data_prg[2];
-    // 597:     already_programmed = true;
-    // 698: }
-
-    // Some behaviours:
-    // se il count è massimo count + 0x20 apre
-    // se è massimo 0x8000 count nel future deve resyncare
-    // NOTA: per resyncare anche la seconda chiave ricevuta deve essere all'interno del futuro di 0x8000 count
-    // Se un segnale è totalmente futuro il count non va avanti
-    // se un segnale ricevuto è futuro ma quello dopo è accettabile si apre e basta
-    // Nella fase di ascolto delle chiavi normali dopo la prog appare esserci una coda lunga massimo 5 elementi
-    // C'è una coda lunga 8 per il resync, meaning che se vede una chiave lunga uno in più del più lungo counter sentito allora resynca al futuro che tiene anche i fix non riconosciuti
-    // Se una chiave è furuta checka se nella queue di chiavi lunga un numero erratico ce n'è una esattamente precedente
-    // La coda per il mem sembra molto erratica ma sono ABBASTANZA sicuro che sia lunga solo 5
-    // Also non so veramente se quando riceve la master prog key il counter del ricevitore avanza
-
-    // Questa roba non dovrebbe mai essere necessaria, ma non mi fido di me stesso
+    // This should not be necessary, but I do not trust myself
     if(app->mem_remote->count > 0xFFFFF) app->mem_remote->count &= 0xFFFFF;
 
     __gui_redraw();

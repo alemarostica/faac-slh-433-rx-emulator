@@ -35,12 +35,9 @@ static void
     FuriString* buffer = furi_string_alloc();
     subghz_protocol_decoder_base_get_string(decoder_base, buffer);
     subghz_receiver_reset(receiver);
-    // Mi piacerebbe avere una devboard
     FURI_LOG_I(TAG, "PACKET:\r\n%s", furi_string_get_cstr(buffer));
     if(context->callback) {
-        if(!context->callback(buffer, context->callback_context)) {
-            context->status = SUBGHZ_RECEIVER_SYNCHRONIZED;
-        }
+        context->callback(buffer, context->callback_context);
     }
     furi_string_free(buffer);
 }
@@ -64,7 +61,6 @@ static int32_t listen_rx(void* ctx) {
     FaacSLHRxEmu* context = (FaacSLHRxEmu*)ctx;
     context->status = SUBGHZ_RECEIVER_LISTENING;
     LevelDuration level_duration;
-    // Mi piacerebbe avere una devboard
     FURI_LOG_I(TAG, "listen_rx started...");
     while(context->status == SUBGHZ_RECEIVER_LISTENING) {
         int ret = furi_stream_buffer_receive(
@@ -80,7 +76,6 @@ static int32_t listen_rx(void* ctx) {
             }
         }
     }
-    // Mi piacerebbe avere una devboard
     FURI_LOG_I(TAG, "listen_rx exiting...");
     context->status = SUBGHZ_RECEIVER_NOTLISTENING;
     return 0;
@@ -95,7 +90,6 @@ void start_listening(FaacSLHRxEmu* context, SubghzPacketCallback callback, void*
     subghz_devices_init();
     const SubGhzDevice* device = subghz_devices_get_by_name(SUBGHZ_DEVICE_CC1101_INT_NAME);
     if(!subghz_devices_is_frequency_valid(device, frequency)) {
-        // Mi piacerebbe avere una devboard
         FURI_LOG_E(TAG, "Frequency not in range. %lu\r\n", frequency);
         subghz_devices_deinit();
         return;
@@ -116,7 +110,6 @@ void start_listening(FaacSLHRxEmu* context, SubghzPacketCallback callback, void*
 
     subghz_devices_start_async_rx(device, rx_capture_callback, context);
 
-    // Mi piacerebbe avere una devboard
     FURI_LOG_I(TAG, "Listening at frequency: %lu\r\n", frequency);
 
     context->thread = furi_thread_alloc_ex("RX", 1024, listen_rx, context);
@@ -129,7 +122,6 @@ void stop_listening(FaacSLHRxEmu* context) {
     }
 
     context->status = SUBGHZ_RECEIVER_UNINITIALIZING;
-    // Mi piacerebbe avere una devboard
     FURI_LOG_D(TAG, "Stopping listening...");
     furi_thread_join(context->thread);
     furi_thread_free(context->thread);

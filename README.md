@@ -2,7 +2,7 @@
 
 As part of my bachelor degree in Computer Science I am creating an emulator of a FAAC XR2 receiver.
 
-This serves no practical purpose and is, in fact, just a collection of facts and functionalities I observed through experimentation on a genuine FAAC XR2(N) device.
+This serves no practical purpose and is, in fact, just a collection of facts and functionalities I observed through experimentation on a genuine FAAC XR2 device.
 The Flipper Zero has made the research significantly easier thanks to the implementation of the FAAC SLH protocol in the [Unleashed Firmware](https://github.com/DarkFlippers/unleashed-firmware).
 This app is for educational purposes only.
 
@@ -18,6 +18,7 @@ if(!already_programmed) {
     already_programmed = true;
 }
 ```
+For simplicity use [my fork](https://github.com/alemarostica/unleashed-firmware?tab=readme-ov-file) of the Unleashed Firmware.
 
 ### Explanation
 The lib file is made so that every key received from a FAAC SLH remote updates the status of the Flipper Zero's receiver. We do not want this in the emulator of the receiver since receiving a pragramming mode key would mess up the status of the decoder for a previously memorized remote. To fix this we make it so when a remote has been memorized the internal seed on the receiver is not updated if another programming mode key is received. The seed is reset when the application is closed (the receiver is deallocated).

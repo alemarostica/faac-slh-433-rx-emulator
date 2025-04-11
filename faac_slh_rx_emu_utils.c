@@ -1,8 +1,9 @@
+// This is copied from Derek Jamison's Rolling flaws application
+// __furi_string_extract_int was slightly edited to behave like __furi_string_extract_string_until
+// Check https://github.com/jamisonderek/flipper-zero-tutorials/tree/main/subghz/apps/rolling-flaws
+
 #include "faac_slh_rx_emu_utils.h"
 #include <gui/gui.h>
-
-// This is copied from Derek Jamison's Rolling flaws application
-// Check https://github.com/jamisonderek/flipper-zero-tutorials/tree/main/subghz/apps/rolling-flaws
 
 size_t __furi_string_extract_string(
     FuriString* buffer,

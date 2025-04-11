@@ -7,12 +7,11 @@
 #include <lib/subghz/protocols/protocol_items.h>
 #include "devices/cc1101_int/cc1101_int_interconnect.h"
 #include "devices/devices.h"
-#include "devices/types.h"
 
 #ifdef TAG
 #undef TAG
 #endif
-#define TAG "FAACRxEmuSubGHz"
+#define TAG "FaacSLHRxEmuSubGHz"
 
 typedef bool (*SubghzPacketCallback)(FuriString* buffer, void* context);
 
@@ -22,7 +21,6 @@ typedef bool (*SubghzPacketCallback)(FuriString* buffer, void* context);
 typedef enum {
     SUBGHZ_RECEIVER_INITIALIZING,
     SUBGHZ_RECEIVER_LISTENING,
-    SUBGHZ_RECEIVER_SYNCHRONIZED,
     SUBGHZ_RECEIVER_NOTLISTENING,
     SUBGHZ_RECEIVER_UNINITIALIZING,
     SUBGHZ_RECEIVER_UNINITIALIZED,

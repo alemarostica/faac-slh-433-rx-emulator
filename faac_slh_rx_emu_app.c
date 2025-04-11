@@ -8,8 +8,11 @@
 #ifdef TAG
 #undef TAG
 #endif
-#define TAG "FAACRxEmuSubGHzApp"
+#define TAG "FaacSLHRxEmuSubGHzApp"
 
+/**
+ * @brief   View IDs.
+*/
 typedef enum {
     FaacSLHRxEmuViewNormal,
     FaacSLHRxEmuViewProg,
@@ -19,6 +22,9 @@ typedef enum {
     FaacSLHRxEmuViewMemory,
 } FaacSLHRxEmuView;
 
+/**
+ * @brief   Submenu Indexes.
+*/
 typedef enum {
     FaacSLHRxEmuSubmenuIndexAbout,
     FaacSLHRxEmuSubmenuIndexNormal,
@@ -27,33 +33,33 @@ typedef enum {
     FaacSLHRxEmuSubmenuIndexMemory,
 } FaacSLHRxEmuSubmenuIndex;
 
+/**
+ * @brief   Callback for parsing normal keys.
+*/
 static bool parse_packet_normal(FuriString* buffer, void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
-    // PERCHÉ VIBRA DUE VOLTE?
-    // Penso sia legato al fatto che il firmware fa vibrare alla ricezione di un segnale FAAC SLH quindi questa che imposto è una seconda vibrazione
     furi_hal_vibro_on(true);
     furi_delay_ms(50);
     furi_hal_vibro_on(false);
 
     if(furi_string_start_with_str(buffer, "Faac SLH 64bit")) {
-        // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "FAAC SLH");
         if(furi_string_search_str(buffer, "Master") != FURI_STRING_FAILURE) {
             furi_string_printf(app->model_normal->info, "Prog key, ignoring");
             __gui_redraw();
-            // return false;
         } else {
             parse_faac_slh_normal(app, buffer);
         }
     } else {
-        // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "Not FAAC SLH");
-        // return false;
     }
 
     return true;
 }
 
+/**
+ * @brief   Callback for parsing prog keys.
+*/
 static bool parse_packet_prog(FuriString* buffer, void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
 
@@ -62,48 +68,43 @@ static bool parse_packet_prog(FuriString* buffer, void* context) {
     furi_hal_vibro_on(false);
 
     if(furi_string_start_with_str(buffer, "Faac SLH 64bit")) {
-        // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "FAAC SLH");
         parse_faac_slh_prog(app, buffer);
     } else {
-        // Mi piacerebbe avere una devboard
         FURI_LOG_I(TAG, "Not FAAC SLH");
-        // return false;
     }
 
     return true;
 }
 
-// DON'T EVER TRY TO PUT ANYTHING IN THIS CALLBACK THAT IS NOT STRICTLY NECESSARY TO THE CALLBACK
-// THEY HAVE THE POWER TO MESS STUFF UP SERIOUSLY
-
 /**
- * @brief       Callback which handles custom events
- * @details     This function is invoked every time an event occurs
- * @param       context The context
- * @param       event The id of the event
- * @return      true if everything executed correctly, false otherwise
+ * @brief   [UNUSED] Callback for custom events.
 */
 bool faac_slh_rx_emu_view_dispatcher_custom_event_callback(void* context, uint32_t event) {
     UNUSED(context);
-
-    // Mi piacerebbe avere una devboard
     FURI_LOG_I(TAG, "Custom event received: %ld", event);
-
     return true;
 }
 
+/**
+ * @brief   Callback for exiting app.
+*/
 uint32_t faac_slh_rx_emu_navigation_exit_callback(void* context) {
     UNUSED(context);
     return VIEW_NONE;
 }
 
+/**
+ * @brief   Callback to submenu.
+*/
 uint32_t faac_slh_rx_emu_navigation_submenu_callback(void* context) {
     UNUSED(context);
-
     return FaacSLHRxEmuViewSubmenu;
 }
 
+/**
+ * @brief   Callback to submenu from Receive view.
+*/
 uint32_t faac_slh_rx_emu_navigation_submenu_normal_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     if(app->model_normal->status == FaacSLHRxEmuNormalStatusSyncFirst ||
@@ -120,6 +121,9 @@ uint32_t faac_slh_rx_emu_navigation_submenu_normal_callback(void* context) {
     return FaacSLHRxEmuViewSubmenu;
 }
 
+/**
+ * @brief   Callback to submenu from Prog view.
+*/
 uint32_t faac_slh_rx_emu_navigation_submenu_prog_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     stop_listening(app->subghz);
@@ -127,6 +131,9 @@ uint32_t faac_slh_rx_emu_navigation_submenu_prog_callback(void* context) {
     return FaacSLHRxEmuViewSubmenu;
 }
 
+/**
+ * @brief   Draw callback for Receive view.
+*/
 void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
     FaacSLHRxEmuModelNormal* model = ((FaacSLHRxEmuRefModelNormal*)my_model)->model;
     FuriString* str = furi_string_alloc();
@@ -152,6 +159,9 @@ void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
     furi_string_free(str);
 }
 
+/**
+ * @brief   Draw callback for Prog view.
+*/
 void faac_slh_rx_emu_prog_draw_callback(Canvas* canvas, void* my_model) {
     FaacSLHRxEmuModelProg* model = ((FaacSLHRxEmuRefModelProg*)my_model)->model;
     FuriString* str = furi_string_alloc();
@@ -171,6 +181,9 @@ void faac_slh_rx_emu_prog_draw_callback(Canvas* canvas, void* my_model) {
     furi_string_free(str);
 }
 
+/**
+ * @brief   Draw callback for Memory view.
+*/
 void faac_slh_rx_emu_memory_draw_callback(Canvas* canvas, void* my_model) {
     FaacSLHRxEmuModelMemory* model = ((FaacSLHRxEmuRefModelMemory*)my_model)->model;
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)model->app;
@@ -196,6 +209,9 @@ void faac_slh_rx_emu_memory_draw_callback(Canvas* canvas, void* my_model) {
     furi_string_free(str);
 }
 
+/**
+ * @brief   [UNUSED] Callback for input.
+*/
 bool faac_slh_rx_emu_input_callback(InputEvent* event, void* context) {
     UNUSED(event);
     UNUSED(context);
@@ -203,6 +219,10 @@ bool faac_slh_rx_emu_input_callback(InputEvent* event, void* context) {
     return false;
 }
 
+/**
+ * @brief   Submenu callback.
+ * @details This function executes code based on the selected submenu entry.
+*/
 void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
 
@@ -227,7 +247,7 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
             app->keys[i]->count = 0x0;
         }
         if(app->subghz != NULL) {
-            // Brutto, lo so, ma altrimenti bisognerebbe modificare significativamente la libreria di unleashed
+            // This is ugly. Doing it differently would require more substantial firmware editing
             faac_slh_rx_emu_subghz_free(app->subghz);
             app->subghz = faac_slh_rx_emu_subghz_alloc();
         }
@@ -238,6 +258,8 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewMemory);
         break;
     case FaacSLHRxEmuSubmenuIndexLastTransmission:
+        // Also ugly, but I couldn't find a better solution
+        // A new widget is created every time the submenu is accessed
         if(app->widget_last_transmission) {
             view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewLastTransmission);
             widget_free(app->widget_last_transmission);
@@ -265,6 +287,9 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
     }
 }
 
+/**
+ * @brief   App allocation.
+*/
 FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)malloc(sizeof(FaacSLHRxEmuApp));
 
@@ -357,10 +382,10 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
         app->view_normal, faac_slh_rx_emu_navigation_submenu_normal_callback);
     view_allocate_model(
         app->view_normal,
-        ViewModelTypeLockFree /* what is, credo qualcosa legato alla concurrency */,
+        ViewModelTypeLockFree /* what is this, concurrency related stuff? */,
         sizeof(FaacSLHRxEmuRefModelNormal));
     FaacSLHRxEmuRefModelNormal* normal_model = view_get_model(app->view_normal);
-    normal_model->model = app->model_normal; // Che strano modo di assegnare un model
+    normal_model->model = app->model_normal; // Weird way to assign a model
     view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewNormal, app->view_normal);
 
     app->view_prog = view_alloc();
@@ -395,6 +420,9 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     return app;
 }
 
+/**
+ * @brief   App deallocation.
+*/
 void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     furi_record_close(RECORD_NOTIFICATION);
 
