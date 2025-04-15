@@ -7,7 +7,7 @@
 #include "notification/notification.h"
 
 // The queue of past keys received, used in the resync phase
-#define QUEUE_SIZE 8
+#define HISTORY_SIZE 8
 
 /**
  * @brief   States of the receiver
@@ -124,6 +124,6 @@ typedef struct {
     FaacSLHRxEmuInteral* mem_remote;
     FaacSLHRxEmuMemStatus mem_status;
     uint32_t mem_seed;
-    FaacSLHRxEmuInteral* keys[QUEUE_SIZE];
+    FaacSLHRxEmuInteral* keys[HISTORY_SIZE];
     FuriString* last_transmission;
 } FaacSLHRxEmuApp;

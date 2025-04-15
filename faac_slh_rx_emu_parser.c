@@ -27,16 +27,20 @@ NOTES:
      -  If a future key is received the receiver will check if a past key is immediately preceding the one just received and resync if so
          -  I could not determine the number of past keys kept in memory
             Sometimes it seemed it only kept 5 while other times up to 8
-            At most, based on lenghty testing, it seemed to keep a maximum of 8 past keys so I decided to use this value for the queue
-         - This queue keeps also keys with a different fix from the memorized one
+            At most, based on lenghty testing, it seemed to keep a maximum of 8 past keys so I decided to use this value for the history
+         - This history keeps also keys with a different fix from the memorized one
      -  The programming phase behaves similarly to the resync phase but checks at most 5 past keys
+     -  The programming phase is selective of the fix value, meaning if the second key received has a different 
+        fix than the first the count check will not happen BUT it still will be kept in the history
+     -  If the fix value corresponds between first and second key received then the count check will happen but 
+        if an invalid count is received it will now become the leading one meaning the receiver will wait for a sequential key based on this count former cunt value.
      -  I don't know is the internal counter is advanced when receiving a prog key
 */
 
-#define DECODE_DEBOUNCE_MS         500
-#define MAX_FUTURE_COUNT_OPEN      0x20
-#define MAX_FUTURE_COUNT_RESYNC    0x8000
-#define QUEUE_MIN_INDEX(key_index) ((key_index) > 4 ? (key_index) - 4 : 0)
+#define DECODE_DEBOUNCE_MS           500
+#define MAX_FUTURE_COUNT_OPEN        0x20
+#define MAX_FUTURE_COUNT_RESYNC      0x8000
+#define HISTORY_MIN_INDEX(key_index) ((key_index) > 4 ? (key_index) - 4 : 0)
 
 uint32_t last_decode = 0;
 static int key_index = 0;
@@ -73,6 +77,16 @@ bool is_within_range(uint32_t value, uint32_t start, uint32_t end) {
     } else {
         return (value >= start || value <= end);
     }
+}
+
+void clear_history(FaacSLHRxEmuInteral** keys) {
+    // Invoked when a remote is succesfully programmed, only the last received key will remain in the history
+    keys[0] = keys[key_index];
+    for(int i = 1; i <= key_index; i++) {
+        keys[i]->count = 0x0;
+        keys[i]->fix = 0x0;
+    }
+    key_index = 1;
 }
 
 void parse_faac_slh_normal(void* context, FuriString* buffer) {
@@ -140,25 +154,30 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
             furi_string_printf(model->info, "OK, first");
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
             // We are reading the second key after a prog key
-            int min = QUEUE_MIN_INDEX(key_index);
+            int min = HISTORY_MIN_INDEX(key_index);
             for(int i = key_index - 1; i >= min; i--) {
-                if(model->fix == app->keys[i]->fix && model->count == app->keys[i]->count + 1) {
-                    furi_string_printf(model->info, "Opened, programmed");
-                    app->mem_remote->fix = model->fix;
-                    app->mem_remote->count = model->count;
-                    model->status = FaacSLHRxEmuNormalStatusNone;
-                    app->mem_status = FaacSLHRxEmuMemStatusFull;
-                    app->mem_seed = app->model_prog->seed;
-                    // Should it zero every past key except the two sync keys?
-                    break;
+                if(model->fix == app->keys[i]->fix) {
+                    if(model->count == app->keys[i]->count + 1) {
+                        furi_string_printf(model->info, "Opened, programmed");
+                        app->mem_remote->fix = model->fix;
+                        app->mem_remote->count = model->count;
+                        model->status = FaacSLHRxEmuNormalStatusNone;
+                        app->mem_status = FaacSLHRxEmuMemStatusFull;
+                        app->mem_seed = app->model_prog->seed;
+                        clear_history(app->keys);
+                        break;
+                    } else {
+                        furi_string_printf(model->info, "Non sequential keys");
+                        break;
+                    }
                 } else {
-                    furi_string_printf(model->info, "Invalid key");
+                    furi_string_printf(model->info, "Unrecognized remote");
                 }
             }
         }
         if(model->status == FaacSLHRxEmuNormalStatusSyncNormal) {
             // We are resyncing
-            // This is not an else if because it can resync at any time the are two sequntial keys in the past queue
+            // This is not an else if because it can resync at any time the are two sequntial keys in the history
             if(model->fix == app->mem_remote->fix) {
                 if(is_within_range(
                        model->count,
@@ -188,13 +207,13 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         }
 
         // Advance the key index
-        if(key_index >= QUEUE_SIZE - 1) {
-            for(int i = 1; i < QUEUE_SIZE; i++) {
+        if(key_index >= HISTORY_SIZE - 1) {
+            for(int i = 1; i < HISTORY_SIZE; i++) {
                 memmove(app->keys[i - 1], app->keys[i], sizeof(FaacSLHRxEmuInteral));
             }
-            key_index = QUEUE_SIZE - 1;
-            app->keys[QUEUE_SIZE - 1]->fix = 0x0;
-            app->keys[QUEUE_SIZE - 1]->count = 0x0;
+            key_index = HISTORY_SIZE - 1;
+            app->keys[HISTORY_SIZE - 1]->fix = 0x0;
+            app->keys[HISTORY_SIZE - 1]->count = 0x0;
         } else {
             key_index += 1;
         }

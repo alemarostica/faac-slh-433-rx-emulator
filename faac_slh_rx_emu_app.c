@@ -147,7 +147,7 @@ void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
     canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
     furi_string_printf(str, "Serial: %07lX  Btn: %01lX", model->fix >> 4, model->fix & 0xF);
     canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-    if(model->count == FAILED_TO_PARSE) {
+    if(model->count == 0x0) {
         furi_string_printf(str, "Count: Unknown");
     } else {
         furi_string_printf(str, "Count: %05lX", model->count);
@@ -242,7 +242,7 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         app->model_prog->seed = 0x0;
         app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
         app->mem_status = FaacSLHRxEmuMemStatusEmpty;
-        for(uint32_t i = 0; i < QUEUE_SIZE; i++) {
+        for(uint32_t i = 0; i < HISTORY_SIZE; i++) {
             app->keys[i]->fix = 0x0;
             app->keys[i]->count = 0x0;
         }
@@ -310,7 +310,7 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_normal->key = furi_string_alloc();
     app->model_normal->info = furi_string_alloc();
     app->model_normal->status = FaacSLHRxEmuNormalStatusNone;
-    for(int i = 0; i < QUEUE_SIZE; i++) {
+    for(int i = 0; i < HISTORY_SIZE; i++) {
         app->keys[i] = malloc(sizeof(FaacSLHRxEmuInteral));
     }
     furi_string_printf(app->model_normal->key, "None received");
@@ -451,7 +451,7 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     furi_string_free(app->model_normal->info);
     furi_string_free(app->model_prog->key);
     furi_string_free(app->model_prog->info);
-    for(int i = 0; i < QUEUE_SIZE; i++) {
+    for(int i = 0; i < HISTORY_SIZE; i++) {
         free(app->keys[i]);
     }
     free(app->mem_remote);

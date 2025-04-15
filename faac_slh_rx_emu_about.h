@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION "1.0.0"
+#define VERSION "1.1.0"
 
 #define FAAC_SLH_RX_EMU_ABOUT_TEXT    \
     "FAAC SLH 433MHz rx\n"            \
