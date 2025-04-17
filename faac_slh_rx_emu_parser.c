@@ -35,6 +35,7 @@ NOTES:
      -  If the fix value corresponds between first and second key received then the count check will happen but 
         if an invalid count is received it will now become the leading one meaning the receiver will wait for a sequential key based on this count former cunt value.
      -  I don't know is the internal counter is advanced when receiving a prog key
+ - The receiver seems to only accept fix values in the range [A0 00 00 00 - A0 FF FF FF]
 */
 
 #define DECODE_DEBOUNCE_MS           500
@@ -149,10 +150,21 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
                 furi_string_printf(model->info, "Unrecognized remote");
             }
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncFirst) {
+            if(model->fix >> 24 != 0xA0) {
+                furi_string_printf(model->info, "Invalid remote");
+                __gui_redraw();
+                return;
+            }
             // We are reading the first key after a prog key
             model->status = FaacSLHRxEmuNormalStatusSyncSecond;
             furi_string_printf(model->info, "OK, first");
         } else if(model->status == FaacSLHRxEmuNormalStatusSyncSecond) {
+            // This is not really necessary
+            if(model->fix >> 24 != 0xA0) {
+                furi_string_printf(model->info, "Invalid remote");
+                __gui_redraw();
+                return;
+            }
             // We are reading the second key after a prog key
             int min = HISTORY_MIN_INDEX(key_index);
             for(int i = key_index - 1; i >= min; i--) {
