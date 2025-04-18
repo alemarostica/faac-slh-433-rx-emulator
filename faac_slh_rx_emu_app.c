@@ -107,15 +107,20 @@ uint32_t faac_slh_rx_emu_navigation_submenu_callback(void* context) {
 */
 uint32_t faac_slh_rx_emu_navigation_submenu_normal_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
+    /*
     if(app->model_normal->status == FaacSLHRxEmuNormalStatusSyncFirst ||
        app->model_normal->status == FaacSLHRxEmuNormalStatusSyncSecond) {
         app->model_normal->status = FaacSLHRxEmuNormalStatusNone;
         furi_string_printf(app->model_normal->info, "No remote memorized");
 
-        app->mem_seed = 0x0;
-        app->mem_remote->fix = 0x0;
-        app->mem_remote->count = 0x0;
+        app->memory->seed = 0x0;
+        for(int i = 0; i < MEMORY_SIZE; i++) {
+            app->memory->remotes[i]->fix = 0x0;
+            app->memory->remotes[i]->count = 0xFFF00000;
+        }
+        app->memory->status = FaacSLHRxEmuMemStatusEmpty;
     }
+    */
     stop_listening(app->subghz);
 
     return FaacSLHRxEmuViewSubmenu;
@@ -194,13 +199,17 @@ void faac_slh_rx_emu_memory_draw_callback(Canvas* canvas, void* my_model) {
     furi_string_printf(str, "Remote Memory");
     canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
     canvas_set_font(canvas, FontSecondary);
-    if(app->mem_status == FaacSLHRxEmuMemStatusFull) {
+    if(app->memory->status == FaacSLHRxEmuMemStatusFull) {
+        /*
         furi_string_printf(str, "Fix: %08lX", app->mem_remote->fix);
         canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
         furi_string_printf(str, "Seed: %08lX", app->mem_seed);
         canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
         furi_string_printf(str, "Cnt: %05lX", app->mem_remote->count);
         canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
+        */
+        furi_string_printf(str, "Seed: %08lX", *model->seed);
+        canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
     } else {
         furi_string_printf(str, "No remote in memory");
         canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
@@ -241,10 +250,16 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         app->model_prog->mCnt = 0x0;
         app->model_prog->seed = 0x0;
         app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
-        app->mem_status = FaacSLHRxEmuMemStatusEmpty;
+        app->memory->status = FaacSLHRxEmuMemStatusEmpty;
+        app->memory->seed = 0x0;
+        app->memory->saved_num = 0;
+        for(int i = 0; i < MEMORY_SIZE; i++) {
+            app->memory->remotes[i]->fix = 0x0;
+            app->memory->remotes[i]->count = 0xFFF00000;
+        }
         for(uint32_t i = 0; i < HISTORY_SIZE; i++) {
-            app->keys[i]->fix = 0x0;
-            app->keys[i]->count = 0x0;
+            app->history[i]->fix = 0x0;
+            app->history[i]->count = 0xFFF00000;
         }
         if(app->subghz != NULL) {
             // This is ugly. Doing it differently would require more substantial firmware editing
@@ -295,8 +310,6 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
 
     Gui* gui = furi_record_open(RECORD_GUI);
 
-    app->mem_seed = 0x0;
-
     app->subghz = faac_slh_rx_emu_subghz_alloc();
 
     app->last_transmission = furi_string_alloc();
@@ -306,12 +319,12 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_normal->fix = 0x0;
     app->model_normal->hop = 0x0;
     app->model_normal->seed = 0x0;
-    app->model_normal->count = 0x0;
+    app->model_normal->count = 0xFFF00000;
     app->model_normal->key = furi_string_alloc();
     app->model_normal->info = furi_string_alloc();
     app->model_normal->status = FaacSLHRxEmuNormalStatusNone;
     for(int i = 0; i < HISTORY_SIZE; i++) {
-        app->keys[i] = malloc(sizeof(FaacSLHRxEmuInteral));
+        app->history[i] = malloc(sizeof(FaacSLHRxEmuInteral));
     }
     furi_string_printf(app->model_normal->key, "None received");
     furi_string_printf(app->model_normal->info, "No remote memorized");
@@ -323,10 +336,18 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->model_prog->info = furi_string_alloc();
     app->model_prog->status = FaacSLHRxEmuProgStatusWaitingForProg;
 
-    app->mem_remote = malloc(sizeof(FaacSLHRxEmuInteral));
+    app->memory = malloc(sizeof(FaacSLHRxEmuMemory));
+    app->memory->status = FaacSLHRxEmuMemStatusEmpty;
+    app->memory->seed = 0x0;
+    app->memory->saved_num = 0;
+    for(int i = 0; i < MEMORY_SIZE; i++) {
+        app->memory->remotes[i] = malloc(sizeof(FaacSLHRxEmuInteral));
+        app->memory->remotes[i]->fix = 0x0;
+        app->memory->remotes[i]->count = 0xFFF00000;
+    }
 
     app->model_memory = malloc(sizeof(FaacSLHRxEmuModelMemory));
-    app->model_memory->remote = app->mem_remote;
+    app->model_memory->seed = &app->memory->seed;
     app->model_memory->app = app;
 
     app->view_dispatcher = view_dispatcher_alloc();
@@ -452,9 +473,12 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     furi_string_free(app->model_prog->key);
     furi_string_free(app->model_prog->info);
     for(int i = 0; i < HISTORY_SIZE; i++) {
-        free(app->keys[i]);
+        free(app->history[i]);
     }
-    free(app->mem_remote);
+    for(int i = 0; i < MEMORY_SIZE; i++) {
+        free(app->memory->remotes[i]);
+    }
+    free(app->memory);
 
     free(app->model_prog);
     free(app->model_normal);

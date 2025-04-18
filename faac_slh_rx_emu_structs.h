@@ -8,6 +8,7 @@
 
 // The queue of past keys received, used in the resync phase
 #define HISTORY_SIZE 8
+#define MEMORY_SIZE  248
 
 /**
  * @brief   States of the receiver
@@ -15,8 +16,7 @@
 typedef enum {
     FaacSLHRxEmuNormalStatusNone, // Receiving keys normally
     FaacSLHRxEmuNormalStatusSyncNormal, // Resyncing if last received key was future
-    FaacSLHRxEmuNormalStatusSyncFirst, // Waiting for first sequential prog key
-    FaacSLHRxEmuNormalStatusSyncSecond, // Waiting for second sequential prog key
+    FaacSLHRxEmuNormalStatusSyncProg,
 } FaacSLHRxEmuNormalStatus;
 
 /**
@@ -90,7 +90,7 @@ typedef struct {
  * @brief   The model for the Memory View
 */
 typedef struct {
-    FaacSLHRxEmuInteral* remote;
+    uint32_t* seed;
     void* app;
 } FaacSLHRxEmuModelMemory;
 
@@ -100,6 +100,13 @@ typedef struct {
 typedef struct {
     FaacSLHRxEmuModelMemory* model;
 } FaacSLHRxEmuRefModelMemory;
+
+typedef struct {
+    FaacSLHRxEmuMemStatus status;
+    FaacSLHRxEmuInteral* remotes[MEMORY_SIZE];
+    uint32_t seed;
+    uint8_t saved_num;
+} FaacSLHRxEmuMemory;
 
 /**
  * @brief   Struct of the main app
@@ -121,9 +128,7 @@ typedef struct {
     FaacSLHRxEmuModelProg* model_prog;
     FaacSLHRxEmuModelMemory* model_memory;
     FaacSLHRxEmu* subghz;
-    FaacSLHRxEmuInteral* mem_remote;
-    FaacSLHRxEmuMemStatus mem_status;
-    uint32_t mem_seed;
-    FaacSLHRxEmuInteral* keys[HISTORY_SIZE];
+    FaacSLHRxEmuMemory* memory;
+    FaacSLHRxEmuInteral* history[HISTORY_SIZE];
     FuriString* last_transmission;
 } FaacSLHRxEmuApp;
