@@ -15,29 +15,27 @@ NOTES:
         Must edit the firmware as specified in README
  -  The remote sometimes sends a weird seed:
      -  If the normal seed is XXXXYYYY, sometimes YYYYXXXX is sent, no idea why
-     -  Also the hop value sent by the remote after does not coincide with the sent seed
+     -  Also the hop value sent by the remote after does not coincide with the sent seed so it seems to be a misbehaviour
  -  Some behaviours of the receiver:
      -  If the counter in the received key is <= internal count + 0x20 then it opens
      -  If the counter in the received key is <= internal count + 0x8000 it must resync
      -  Any other value is considered past
      -  To resync the receiver must receive two sequential keys, so if count in key1 = x, count in key2 must be x + 1
-     -  The second received key may be outside the internal count + 0x8000 range
      -  The internal count is not updated unless the received key is valid or the internal count is resynced
      -  If a future key is received but the next is in range the gate is opened
      -  If a future key is received the receiver will check if a past key is immediately preceding the one just received and resync if so
          -  I could not determine the number of past keys kept in memory
             Sometimes it seemed it only kept 5 while other times up to 8
-            At most, based on lenghty testing, it seemed to keep a maximum of 8 past keys so I decided to use this value for the history
+            At most, based on lenghty testing, it seemed to keep a maximum of 8 past keys so I decided to use this value for the history length
          - This history keeps also keys with a different fix from the memorized one
-     -  The programming phase behaves similarly to the resync phase but checks at most 5 past keys
-     -  The programming phase is selective of the fix value, meaning if the second key received has a different 
-        fix than the first the count check will not happen BUT it still will be kept in the history
+     -  The programming phase behaves similarly to the resync phase
      -  If the fix value corresponds between first and second key received then the count check will happen but 
         if an invalid count is received it will now become the leading one meaning the receiver will wait for a sequential key based on this count former cunt value.
      -  I don't know is the internal counter is advanced when receiving a prog key
  -  The receiver seems to only accept fix values in the range [A0 00 00 00 - A0 FF FF FF]
  -  When a remote is transformed into a slave it inherits the seed of the master and keeps his own serial
- -  This means that when a different serial is detected the receiver must try and check if 
+ -  This means that when a different serial is detected the receiver must try and check if the remote's counter advances correctly
+ -  If so a new remote (for a maximum of 248) is memorized.
 */
 
 #define DECODE_DEBOUNCE_MS           500
@@ -129,7 +127,10 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
 
         for(uint8_t i = 0; i < app->memory->saved_num; i++) {
             if(model->count == app->memory->remotes[i]->count) {
-                furi_string_printf(model->info, "Replay attack");
+                if(model->fix == app->memory->remotes[i]->fix) {
+                    found = 249;
+                    furi_string_printf(model->info, "Replay attack");
+                }
             } else if(is_within_range(
                           model->count,
                           app->memory->remotes[i]->count + 1,
@@ -176,13 +177,14 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         if(model->status == FaacSLHRxEmuNormalStatusSyncProg &&
            app->memory->saved_num < MEMORY_SIZE) {
             for(int i = key_index - 1; i >= 0; i--) {
-                if(model->fix == app->history[i]->fix &&
-                   model->count == app->history[i]->count + 1) {
-                    app->memory->remotes[app->memory->saved_num]->fix = model->fix;
-                    app->memory->remotes[app->memory->saved_num]->count = model->count;
-                    furi_string_printf(
-                        model->info, "Opened, programmed %01d", app->memory->saved_num);
-                    app->memory->saved_num += 1;
+                if(model->fix == app->history[i]->fix) {
+                    if(model->count == app->history[i]->count + 1) {
+                        app->memory->remotes[app->memory->saved_num]->fix = model->fix;
+                        app->memory->remotes[app->memory->saved_num]->count = model->count;
+                        furi_string_printf(
+                            model->info, "Opened, programmed %01d", app->memory->saved_num);
+                        app->memory->saved_num += 1;
+                    }
                     break;
                 }
             }

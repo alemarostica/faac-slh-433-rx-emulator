@@ -1,6 +1,6 @@
 #pragma once
 
-#include "applications_user/faac_rx_emulator/faac_slh_rx_emu_subghz.h"
+#include "faac_slh_rx_emu_subghz.h"
 #include "gui/modules/submenu.h"
 #include "gui/modules/widget.h"
 #include "gui/view_dispatcher.h"

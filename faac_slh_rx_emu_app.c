@@ -152,7 +152,7 @@ void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
     canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
     furi_string_printf(str, "Serial: %07lX  Btn: %01lX", model->fix >> 4, model->fix & 0xF);
     canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-    if(model->count == 0x0) {
+    if(model->count == 0xFFF00000) {
         furi_string_printf(str, "Count: Unknown");
     } else {
         furi_string_printf(str, "Count: %05lX", model->count);
