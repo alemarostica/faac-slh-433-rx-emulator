@@ -38,10 +38,9 @@ NOTES:
  -  If so a new remote (for a maximum of 248) is memorized.
 */
 
-#define DECODE_DEBOUNCE_MS           500
-#define MAX_FUTURE_COUNT_OPEN        0x20
-#define MAX_FUTURE_COUNT_RESYNC      0x8000
-#define HISTORY_MIN_INDEX(key_index) ((key_index) > 4 ? (key_index) - 4 : 0)
+#define DECODE_DEBOUNCE_MS      500
+#define MAX_FUTURE_COUNT_OPEN   0x20
+#define MAX_FUTURE_COUNT_RESYNC 0x8000
 
 uint32_t last_decode = 0;
 static int key_index = 0;
@@ -110,18 +109,18 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
 
     app->model_normal->hop = __furi_string_extract_int(buffer, "Hop:", ' ', FAILED_TO_PARSE);
 
-    model->fix = __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
-    model->count = __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
-
-    if(model->fix == FAILED_TO_PARSE || model->count == FAILED_TO_PARSE) {
-        furi_string_printf(model->info, "Failed to parse, retry");
-        __gui_redraw();
-        return;
-    }
-
     uint8_t found = 250;
 
     if(app->memory->status == FaacSLHRxEmuMemStatusFull) {
+        model->fix = __furi_string_extract_int(buffer, "Fix:", ' ', FAILED_TO_PARSE);
+        model->count = __furi_string_extract_int(buffer, "Cnt:", '\r', FAILED_TO_PARSE);
+
+        if(model->fix == FAILED_TO_PARSE || model->count == FAILED_TO_PARSE) {
+            furi_string_printf(model->info, "Failed to parse, retry");
+            __gui_redraw();
+            return;
+        }
+
         app->history[key_index]->fix = model->fix;
         app->history[key_index]->count = model->count;
 
@@ -223,6 +222,11 @@ void parse_faac_slh_normal(void* context, FuriString* buffer) {
         app->memory->remotes[i]->count &= 0xFFFFF;
     }
 
+    furi_string_printf(app->memory_string, "Memory seed: %08lX\nRemotes:\n", app->memory->seed);
+    for(int i = 0; i < app->memory->saved_num; i++) {
+        furi_string_cat_printf(
+            app->memory_string, "%02X: %08lX\n", i, app->memory->remotes[i]->fix);
+    }
     __gui_redraw();
 }
 
@@ -260,6 +264,7 @@ void parse_faac_slh_prog(void* context, FuriString* buffer) {
         app->memory->status = FaacSLHRxEmuMemStatusFull;
         furi_string_printf(app->model_normal->info, "Syncing prog");
         furi_string_printf(model->info, "OK, Prog");
+        app->memory->seed = model->seed;
     } else if(model->status == FaacSLHRxEmuProgStatusLearned) {
         // At this stage a reomte has been memorized, nothing else received will be saved
         furi_string_printf(model->info, "Memory full");
@@ -267,5 +272,6 @@ void parse_faac_slh_prog(void* context, FuriString* buffer) {
         return;
     }
 
+    furi_string_printf(app->memory_string, "Memory seed: %08lX", app->memory->seed);
     __gui_redraw();
 }

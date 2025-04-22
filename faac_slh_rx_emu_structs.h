@@ -86,21 +86,6 @@ typedef struct {
     FaacSLHRxEmuModelProg* model;
 } FaacSLHRxEmuRefModelProg;
 
-/**
- * @brief   The model for the Memory View
-*/
-typedef struct {
-    uint32_t* seed;
-    void* app;
-} FaacSLHRxEmuModelMemory;
-
-/**
- * @brief   Reference to a FaacSLHRxEmuModelMemory
-*/
-typedef struct {
-    FaacSLHRxEmuModelMemory* model;
-} FaacSLHRxEmuRefModelMemory;
-
 typedef struct {
     FaacSLHRxEmuMemStatus status;
     FaacSLHRxEmuInteral* remotes[MEMORY_SIZE];
@@ -119,16 +104,16 @@ typedef struct {
 
     View* view_normal;
     View* view_prog;
-    View* view_memory;
 
     Widget* widget_about;
     Widget* widget_last_transmission;
+    Widget* widget_memory;
 
     FaacSLHRxEmuModelNormal* model_normal;
     FaacSLHRxEmuModelProg* model_prog;
-    FaacSLHRxEmuModelMemory* model_memory;
     FaacSLHRxEmu* subghz;
     FaacSLHRxEmuMemory* memory;
     FaacSLHRxEmuInteral* history[HISTORY_SIZE];
     FuriString* last_transmission;
+    FuriString* memory_string;
 } FaacSLHRxEmuApp;

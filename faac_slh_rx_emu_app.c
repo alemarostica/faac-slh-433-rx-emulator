@@ -107,30 +107,6 @@ uint32_t faac_slh_rx_emu_navigation_submenu_callback(void* context) {
 */
 uint32_t faac_slh_rx_emu_navigation_submenu_normal_callback(void* context) {
     FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
-    /*
-    if(app->model_normal->status == FaacSLHRxEmuNormalStatusSyncFirst ||
-       app->model_normal->status == FaacSLHRxEmuNormalStatusSyncSecond) {
-        app->model_normal->status = FaacSLHRxEmuNormalStatusNone;
-        furi_string_printf(app->model_normal->info, "No remote memorized");
-
-        app->memory->seed = 0x0;
-        for(int i = 0; i < MEMORY_SIZE; i++) {
-            app->memory->remotes[i]->fix = 0x0;
-            app->memory->remotes[i]->count = 0xFFF00000;
-        }
-        app->memory->status = FaacSLHRxEmuMemStatusEmpty;
-    }
-    */
-    stop_listening(app->subghz);
-
-    return FaacSLHRxEmuViewSubmenu;
-}
-
-/**
- * @brief   Callback to submenu from Prog view.
-*/
-uint32_t faac_slh_rx_emu_navigation_submenu_prog_callback(void* context) {
-    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)context;
     stop_listening(app->subghz);
 
     return FaacSLHRxEmuViewSubmenu;
@@ -152,7 +128,7 @@ void faac_slh_rx_emu_normal_draw_callback(Canvas* canvas, void* my_model) {
     canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
     furi_string_printf(str, "Serial: %07lX  Btn: %01lX", model->fix >> 4, model->fix & 0xF);
     canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-    if(model->count == 0xFFF00000) {
+    if(model->count == 0xBADC0DE || model->count == 0xFFF00000) {
         furi_string_printf(str, "Count: Unknown");
     } else {
         furi_string_printf(str, "Count: %05lX", model->count);
@@ -187,38 +163,6 @@ void faac_slh_rx_emu_prog_draw_callback(Canvas* canvas, void* my_model) {
 }
 
 /**
- * @brief   Draw callback for Memory view.
-*/
-void faac_slh_rx_emu_memory_draw_callback(Canvas* canvas, void* my_model) {
-    FaacSLHRxEmuModelMemory* model = ((FaacSLHRxEmuRefModelMemory*)my_model)->model;
-    FaacSLHRxEmuApp* app = (FaacSLHRxEmuApp*)model->app;
-    FuriString* str = furi_string_alloc();
-
-    canvas_set_bitmap_mode(canvas, 1);
-    canvas_set_font(canvas, FontPrimary);
-    furi_string_printf(str, "Remote Memory");
-    canvas_draw_str(canvas, 0, 8, furi_string_get_cstr(str));
-    canvas_set_font(canvas, FontSecondary);
-    if(app->memory->status == FaacSLHRxEmuMemStatusFull) {
-        /*
-        furi_string_printf(str, "Fix: %08lX", app->mem_remote->fix);
-        canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
-        furi_string_printf(str, "Seed: %08lX", app->mem_seed);
-        canvas_draw_str(canvas, 0, 30, furi_string_get_cstr(str));
-        furi_string_printf(str, "Cnt: %05lX", app->mem_remote->count);
-        canvas_draw_str(canvas, 0, 41, furi_string_get_cstr(str));
-        */
-        furi_string_printf(str, "Seed: %08lX", *model->seed);
-        canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
-    } else {
-        furi_string_printf(str, "No remote in memory");
-        canvas_draw_str(canvas, 0, 19, furi_string_get_cstr(str));
-    }
-
-    furi_string_free(str);
-}
-
-/**
  * @brief   [UNUSED] Callback for input.
 */
 bool faac_slh_rx_emu_input_callback(InputEvent* event, void* context) {
@@ -245,6 +189,7 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         break;
     case FaacSLHRxEmuSubmenuIndexProg:
         // Every time this view in entered a new remote is programmed and the last forgotten
+        furi_string_printf(app->memory_string, "No remote memorized");
         furi_string_printf(app->model_prog->info, "Waiting for prog key");
         furi_string_printf(app->model_prog->key, "None received");
         app->model_prog->mCnt = 0x0;
@@ -270,6 +215,17 @@ void faac_slh_rx_emu_submenu_callback(void* context, uint32_t index) {
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewProg);
         break;
     case FaacSLHRxEmuSubmenuIndexMemory:
+        if(app->widget_memory) {
+            view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewMemory);
+            widget_free(app->widget_memory);
+        }
+        app->widget_memory = widget_alloc();
+        widget_add_text_scroll_element(
+            app->widget_memory, 0, 0, 128, 64, furi_string_get_cstr(app->memory_string));
+        view_set_previous_callback(
+            widget_get_view(app->widget_memory), faac_slh_rx_emu_navigation_submenu_callback);
+        view_dispatcher_add_view(
+            app->view_dispatcher, FaacSLHRxEmuViewMemory, widget_get_view(app->widget_memory));
         view_dispatcher_switch_to_view(app->view_dispatcher, FaacSLHRxEmuViewMemory);
         break;
     case FaacSLHRxEmuSubmenuIndexLastTransmission:
@@ -315,6 +271,9 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     app->last_transmission = furi_string_alloc();
     furi_string_printf(app->last_transmission, "Nothing received yet");
 
+    app->memory_string = furi_string_alloc();
+    furi_string_printf(app->memory_string, "No remote memorized");
+
     app->model_normal = malloc(sizeof(FaacSLHRxEmuModelNormal));
     app->model_normal->fix = 0x0;
     app->model_normal->hop = 0x0;
@@ -345,10 +304,6 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
         app->memory->remotes[i]->fix = 0x0;
         app->memory->remotes[i]->count = 0xFFF00000;
     }
-
-    app->model_memory = malloc(sizeof(FaacSLHRxEmuModelMemory));
-    app->model_memory->seed = &app->memory->seed;
-    app->model_memory->app = app;
 
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, gui, ViewDispatcherTypeFullscreen);
@@ -413,21 +368,11 @@ FaacSLHRxEmuApp* faac_slh_rx_emu_app_alloc() {
     view_set_context(app->view_prog, app);
     view_set_draw_callback(app->view_prog, faac_slh_rx_emu_prog_draw_callback);
     view_set_input_callback(app->view_prog, faac_slh_rx_emu_input_callback);
-    view_set_previous_callback(app->view_prog, faac_slh_rx_emu_navigation_submenu_prog_callback);
+    view_set_previous_callback(app->view_prog, faac_slh_rx_emu_navigation_submenu_normal_callback);
     view_allocate_model(app->view_prog, ViewModelTypeLockFree, sizeof(FaacSLHRxEmuRefModelProg));
     FaacSLHRxEmuRefModelProg* prog_model = view_get_model(app->view_prog);
     prog_model->model = app->model_prog;
     view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewProg, app->view_prog);
-
-    app->view_memory = view_alloc();
-    view_set_context(app->view_memory, app);
-    view_set_draw_callback(app->view_memory, faac_slh_rx_emu_memory_draw_callback);
-    view_set_input_callback(app->view_memory, faac_slh_rx_emu_input_callback);
-    view_set_previous_callback(app->view_memory, faac_slh_rx_emu_navigation_submenu_callback);
-    view_allocate_model(app->view_memory, ViewModelTypeLockFree, sizeof(FaacSLHRxEmuModelMemory));
-    FaacSLHRxEmuRefModelMemory* mem_model = view_get_model(app->view_memory);
-    mem_model->model = app->model_memory;
-    view_dispatcher_add_view(app->view_dispatcher, FaacSLHRxEmuViewMemory, app->view_memory);
 
     app->widget_about = widget_alloc();
     widget_add_text_scroll_element(app->widget_about, 0, 0, 128, 64, FAAC_SLH_RX_EMU_ABOUT_TEXT);
@@ -459,7 +404,6 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     submenu_free(app->submenu);
     view_free(app->view_normal);
     view_free(app->view_prog);
-    view_free(app->view_memory);
     widget_free(app->widget_about);
     view_dispatcher_free(app->view_dispatcher);
 
@@ -468,6 +412,7 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     faac_slh_rx_emu_subghz_free(app->subghz);
 
     furi_string_free(app->last_transmission);
+    furi_string_free(app->memory_string);
     furi_string_free(app->model_normal->key);
     furi_string_free(app->model_normal->info);
     furi_string_free(app->model_prog->key);
@@ -482,7 +427,6 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
 
     free(app->model_prog);
     free(app->model_normal);
-    free(app->model_memory);
 
     free(app);
 }

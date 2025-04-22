@@ -14,7 +14,7 @@ FaacSLHRxEmu* faac_slh_rx_emu_subghz_alloc() {
     FaacSLHRxEmu* subghz = malloc(sizeof(FaacSLHRxEmu));
     subghz->status = SUBGHZ_RECEIVER_UNINITIALIZED;
     subghz->environment = load_environment();
-    subghz->stream = furi_stream_buffer_alloc(sizeof(LevelDuration) * 512, sizeof(LevelDuration));
+    subghz->stream = furi_stream_buffer_alloc(sizeof(LevelDuration) * 1024, sizeof(LevelDuration));
     furi_check(subghz->stream);
     subghz->overrun = false;
     return subghz;
