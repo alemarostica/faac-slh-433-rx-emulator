@@ -396,7 +396,10 @@ void faac_slh_rx_emu_app_free(FaacSLHRxEmuApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewNormal);
     view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewProg);
     view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewSubmenu);
-    view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewMemory);
+    if(app->widget_memory) {
+        view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewMemory);
+        widget_free(app->widget_memory);
+    }
     if(app->widget_last_transmission) {
         view_dispatcher_remove_view(app->view_dispatcher, FaacSLHRxEmuViewLastTransmission);
         widget_free(app->widget_last_transmission);
